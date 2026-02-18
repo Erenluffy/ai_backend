@@ -26,11 +26,15 @@ CORS(app, resources={
 conversations = {}
 
 # API Configuration
-API_PROVIDER = os.getenv('API_PROVIDER', 'gemini').lower()  # deepseek, openai, anthropic, gemini
+API_PROVIDER = os.getenv('API_PROVIDER', 'ollama').lower()  # deepseek, openai, anthropic, gemini, ollama
 DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY', '')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
 ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY', '')
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
+
+# Ollama configuration
+OLLAMA_URL = os.getenv('OLLAMA_URL', 'http://localhost:11434')
+OLLAMA_MODEL = os.getenv('OLLAMA_MODEL', 'llama2')  # or mistral, codellama, phi, neural-chat, etc.
 
 # DeepSeek configuration
 DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
@@ -49,8 +53,76 @@ def get_ai_response(message, conversation_history=[]):
         return get_anthropic_response(message, conversation_history)
     elif API_PROVIDER == 'gemini':
         return get_gemini_response(message, conversation_history)
+    elif API_PROVIDER == 'ollama':
+        return get_ollama_response(message, conversation_history)
     else:
-        return f"Error: Unknown API provider '{API_PROVIDER}'. Please set API_PROVIDER to 'deepseek', 'openai', 'anthropic', or 'gemini'."
+        return f"Error: Unknown API provider '{API_PROVIDER}'. Please set API_PROVIDER to 'deepseek', 'openai', 'anthropic', 'gemini', or 'ollama'."
+
+def get_ollama_response(message, conversation_history=[]):
+    """Get response from local Ollama (completely free)"""
+    
+    # Build context from conversation history
+    messages = []
+    
+    # Add system message
+    messages.append({"role": "system", "content": "You are a helpful AI assistant."})
+    
+    # Add conversation history
+    for entry in conversation_history[-5:]:  # Last 5 exchanges for context
+        if entry.get('user'):
+            messages.append({"role": "user", "content": entry['user']})
+        if entry.get('bot'):
+            messages.append({"role": "assistant", "content": entry['bot']})
+    
+    # Add current message
+    messages.append({"role": "user", "content": message})
+    
+    # Ollama API payload
+    payload = {
+        "model": OLLAMA_MODEL,
+        "messages": messages,
+        "stream": False,
+        "options": {
+            "temperature": 0.7,
+            "num_predict": 500
+        }
+    }
+    
+    try:
+        logger.info(f"Sending request to Ollama with model: {OLLAMA_MODEL}")
+        
+        response = requests.post(
+            f"{OLLAMA_URL}/api/chat",
+            json=payload,
+            timeout=60  # Ollama might take longer for first response
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            if 'message' in data and 'content' in data['message']:
+                return data['message']['content'].strip()
+            else:
+                logger.error(f"Unexpected Ollama response format: {data}")
+                return "Error: Unexpected response format from Ollama"
+        else:
+            logger.error(f"Ollama API error {response.status_code}: {response.text}")
+            
+            if response.status_code == 404:
+                return f"Error: Model '{OLLAMA_MODEL}' not found. Please pull it first with: ollama pull {OLLAMA_MODEL}"
+            elif response.status_code == 500:
+                return "Error: Ollama server error. Make sure Ollama is running properly."
+            else:
+                return f"Error {response.status_code}: Could not get response from Ollama"
+            
+    except requests.exceptions.ConnectionError:
+        logger.error("Cannot connect to Ollama. Is it running?")
+        return "Error: Cannot connect to Ollama. Please make sure Ollama is running (run 'ollama serve' in terminal)"
+    except requests.exceptions.Timeout:
+        logger.error("Ollama request timeout")
+        return "Error: Ollama request timed out. The model might still be loading."
+    except Exception as e:
+        logger.error(f"Unexpected error with Ollama: {str(e)}")
+        return f"Error with Ollama: {str(e)}"
 
 def get_deepseek_response(message, conversation_history=[]):
     """Get response from DeepSeek API"""
@@ -191,6 +263,7 @@ def get_anthropic_response(message, conversation_history=[]):
         if hasattr(e, 'response') and e.response:
             logger.error(f"Response: {e.response.text}")
         return f"Error getting Anthropic response: {str(e)}"
+
 def get_gemini_response(message, conversation_history=[]):
     """Get response from Google Gemini API"""
     if not GEMINI_API_KEY:
@@ -296,119 +369,7 @@ def get_gemini_response(message, conversation_history=[]):
     except Exception as e:
         logger.error(f"Unexpected error: {str(e)}")
         return f"Error: {str(e)}"
-def extract_gemini_text(data):
-    """Extract text from various Gemini response formats"""
-    try:
-        # Format 1: Standard response with candidates
-        if 'candidates' in data and len(data['candidates']) > 0:
-            candidate = data['candidates'][0]
-            
-            # Check different content formats
-            if 'content' in candidate:
-                content = candidate['content']
-                if 'parts' in content and len(content['parts']) > 0:
-                    if 'text' in content['parts'][0]:
-                        return content['parts'][0]['text'].strip()
-            
-            # Direct output format
-            if 'output' in candidate:
-                return candidate['output'].strip()
-        
-        # Format 2: Alternative response structure
-        if 'contents' in data and len(data['contents']) > 0:
-            content = data['contents'][0]
-            if 'parts' in content and len(content['parts']) > 0:
-                if 'text' in content['parts'][0]:
-                    return content['parts'][0]['text'].strip()
-        
-        # Format 3: Simple text response
-        if 'text' in data:
-            return data['text'].strip()
-        
-        # Format 4: GenerateText response
-        if 'candidates' in data and len(data['candidates']) > 0:
-            candidate = data['candidates'][0]
-            if 'output' in candidate:
-                return candidate['output'].strip()
-        
-        logger.error(f"Could not extract text from response: {data}")
-        return None
-        
-    except Exception as e:
-        logger.error(f"Error extracting Gemini text: {str(e)}")
-        return None
-def get_gemini_response_sdk(message, conversation_history=[]):
-    """Get response from Google Gemini API using the official SDK"""
-    try:
-        import google.generativeai as genai
-        
-        if not GEMINI_API_KEY:
-            return "Error: Gemini API key not configured."
-        
-        # Configure the API
-        genai.configure(api_key=GEMINI_API_KEY)
-        
-        # List available models (for debugging)
-        try:
-            models = genai.list_models()
-            logger.info("Available models:")
-            for model in models:
-                logger.info(f"  - {model.name}")
-        except:
-            pass
-        
-        # Try different model names
-        model_names = [
-            'models/gemini-1.5-pro',
-            'models/gemini-1.0-pro',
-            'models/gemini-pro'
-        ]
-        
-        last_error = None
-        
-        for model_name in model_names:
-            try:
-                # Create the model
-                model = genai.GenerativeModel(model_name)
-                
-                # Build context from conversation history
-                context = ""
-                for entry in conversation_history[-3:]:
-                    if entry.get('user'):
-                        context += f"User: {entry['user']}\n"
-                    if entry.get('bot'):
-                        context += f"Assistant: {entry['bot']}\n"
-                
-                # Create prompt with history and current message
-                prompt = f"{context}User: {message}\nAssistant:"
-                
-                # Generate response
-                response = model.generate_content(
-                    prompt,
-                    generation_config=genai.types.GenerationConfig(
-                        temperature=0.7,
-                        max_output_tokens=500,
-                        top_p=0.95,
-                        top_k=40
-                    )
-                )
-                
-                if response.text:
-                    logger.info(f"Successfully used Gemini model: {model_name}")
-                    return response.text.strip()
-                    
-            except Exception as e:
-                last_error = str(e)
-                logger.warning(f"Failed with model {model_name}: {str(e)}")
-                continue
-        
-        return f"Error: Could not generate response with any Gemini model. Last error: {last_error}"
-        
-    except ImportError:
-        return "Error: google-generativeai package not installed. Run: pip install google-generativeai"
-    except Exception as e:
-        logger.error(f"Gemini SDK error: {str(e)}")
-        return f"Error with Gemini SDK: {str(e)}"
+
 @app.route('/')
 def home():
     return jsonify({
@@ -434,8 +395,25 @@ def get_config():
         "deepseek_configured": bool(DEEPSEEK_API_KEY),
         "openai_configured": bool(OPENAI_API_KEY),
         "anthropic_configured": bool(ANTHROPIC_API_KEY),
-        "gemini_configured": bool(GEMINI_API_KEY)
+        "gemini_configured": bool(GEMINI_API_KEY),
+        "ollama_configured": True,  # Ollama doesn't need an API key
+        "ollama_model": OLLAMA_MODEL,
+        "ollama_url": OLLAMA_URL
     })
+
+@app.route('/api/ollama/models', methods=['GET'])
+def list_ollama_models():
+    """List available Ollama models"""
+    try:
+        response = requests.get(f"{OLLAMA_URL}/api/tags", timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            models = [model['name'] for model in data.get('models', [])]
+            return jsonify({"success": True, "models": models})
+        else:
+            return jsonify({"success": False, "error": "Could not fetch models"}), 500
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/chat', methods=['POST', 'OPTIONS'])
 def chat():
@@ -518,5 +496,7 @@ if __name__ == '__main__':
         logger.warning("ANTHROPIC_API_KEY not set! Anthropic API will not work.")
     elif API_PROVIDER == 'gemini' and not GEMINI_API_KEY:
         logger.warning("GEMINI_API_KEY not set! Gemini API will not work.")
+    elif API_PROVIDER == 'ollama':
+        logger.info(f"Ollama configured with model: {OLLAMA_MODEL}, URL: {OLLAMA_URL}")
     
     app.run(host='0.0.0.0', port=port, debug=debug)
