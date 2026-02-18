@@ -191,15 +191,21 @@ def get_anthropic_response(message, conversation_history=[]):
         if hasattr(e, 'response') and e.response:
             logger.error(f"Response: {e.response.text}")
         return f"Error getting Anthropic response: {str(e)}"
-
 def get_gemini_response(message, conversation_history=[]):
     """Get response from Google Gemini API"""
     if not GEMINI_API_KEY:
         return "Error: Gemini API key not configured. Please set GEMINI_API_KEY environment variable."
     
+    # Try different model names and endpoints
+    models_to_try = [
+        "gemini-1.5-pro",  # Latest model
+        "gemini-1.0-pro",   # Stable model
+        "gemini-pro"        # Original model name
+    ]
+    
     # Build context from conversation history
     context = ""
-    for entry in conversation_history[-5:]:  # Last 5 exchanges for context
+    for entry in conversation_history[-3:]:  # Last 3 exchanges for context
         if entry.get('user'):
             context += f"User: {entry['user']}\n"
         if entry.get('bot'):
@@ -208,80 +214,233 @@ def get_gemini_response(message, conversation_history=[]):
     # Create prompt with history and current message
     prompt = f"{context}User: {message}\nAssistant:"
     
-    # Prepare the request payload for Gemini
-    url = f"{GEMINI_API_URL}?key={GEMINI_API_KEY}"
+    last_error = None
     
-    payload = {
-        "contents": [
-            {
-                "parts": [
+    # Try each model until one works
+    for model in models_to_try:
+        try:
+            # Different endpoint formats to try
+            endpoints_to_try = [
+                f"https://generativelanguage.googleapis.com/v1/models/{model}:generateContent",
+                f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+                f"https://generativelanguage.googleapis.com/v1/models/{model}:generateText",
+                f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateText"
+            ]
+            
+            for endpoint in endpoints_to_try:
+                url = f"{endpoint}?key={GEMINI_API_KEY}"
+                
+                # Try different payload formats
+                payload_formats = [
+                    # Format 1: Standard chat format
                     {
-                        "text": prompt
+                        "contents": [
+                            {
+                                "parts": [
+                                    {
+                                        "text": prompt
+                                    }
+                                ]
+                            }
+                        ],
+                        "generationConfig": {
+                            "temperature": 0.7,
+                            "maxOutputTokens": 500,
+                            "topP": 0.95,
+                            "topK": 40
+                        }
+                    },
+                    # Format 2: Simplified format
+                    {
+                        "prompt": {
+                            "text": prompt
+                        },
+                        "temperature": 0.7,
+                        "max_output_tokens": 500
+                    },
+                    # Format 3: Messages format
+                    {
+                        "messages": [
+                            {
+                                "role": "user",
+                                "parts": [{"text": prompt}]
+                            }
+                        ],
+                        "generationConfig": {
+                            "temperature": 0.7,
+                            "maxOutputTokens": 500
+                        }
                     }
                 ]
-            }
-        ],
-        "generationConfig": {
-            "temperature": 0.7,
-            "maxOutputTokens": 500,
-            "topP": 0.95,
-            "topK": 40
-        },
-        "safetySettings": [
-            {
-                "category": "HARM_CATEGORY_HARASSMENT",
-                "threshold": "BLOCK_MEDIUM_AND_ABOVE"
-            },
-            {
-                "category": "HARM_CATEGORY_HATE_SPEECH",
-                "threshold": "BLOCK_MEDIUM_AND_ABOVE"
-            },
-            {
-                "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-                "threshold": "BLOCK_MEDIUM_AND_ABOVE"
-            },
-            {
-                "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
-                "threshold": "BLOCK_MEDIUM_AND_ABOVE"
-            }
-        ]
-    }
+                
+                for payload in payload_formats:
+                    try:
+                        logger.info(f"Trying Gemini model: {model}, endpoint: {endpoint}")
+                        
+                        headers = {
+                            "Content-Type": "application/json"
+                        }
+                        
+                        response = requests.post(url, headers=headers, json=payload, timeout=30)
+                        
+                        if response.status_code == 200:
+                            data = response.json()
+                            logger.info(f"Success with model: {model}")
+                            
+                            # Try to extract text from different response formats
+                            text = extract_gemini_text(data)
+                            if text:
+                                return text
+                            
+                        elif response.status_code == 404:
+                            continue  # Try next endpoint/model
+                        else:
+                            # Log other errors but continue trying
+                            logger.warning(f"Gemini API error with {model}: {response.status_code} - {response.text}")
+                            
+                    except requests.exceptions.RequestException as e:
+                        last_error = str(e)
+                        continue
+                        
+        except Exception as e:
+            last_error = str(e)
+            continue
     
+    # If all attempts fail, try the older generateText endpoint as last resort
     try:
-        response = requests.post(url, json=payload)
-        response.raise_for_status()
-        data = response.json()
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateText?key={GEMINI_API_KEY}"
+        payload = {
+            "prompt": {
+                "text": prompt
+            },
+            "temperature": 0.7,
+            "maxOutputTokens": 500
+        }
         
-        # Extract the response text from Gemini's response format
+        response = requests.post(url, json=payload, timeout=30)
+        if response.status_code == 200:
+            data = response.json()
+            if 'candidates' in data and len(data['candidates']) > 0:
+                return data['candidates'][0]['output']
+    except:
+        pass
+    
+    logger.error(f"All Gemini API attempts failed. Last error: {last_error}")
+    return f"Error: Could not connect to Gemini API. Please check your API key and try again. Details: {last_error}"
+
+def extract_gemini_text(data):
+    """Extract text from various Gemini response formats"""
+    try:
+        # Format 1: Standard response with candidates
         if 'candidates' in data and len(data['candidates']) > 0:
             candidate = data['candidates'][0]
-            if 'content' in candidate and 'parts' in candidate['content']:
-                parts = candidate['content']['parts']
-                if len(parts) > 0 and 'text' in parts[0]:
-                    return parts[0]['text'].strip()
+            
+            # Check different content formats
+            if 'content' in candidate:
+                content = candidate['content']
+                if 'parts' in content and len(content['parts']) > 0:
+                    if 'text' in content['parts'][0]:
+                        return content['parts'][0]['text'].strip()
+            
+            # Direct output format
+            if 'output' in candidate:
+                return candidate['output'].strip()
         
-        # If we can't find the text in the expected format, log and return error
-        logger.error(f"Unexpected Gemini response format: {data}")
-        return "Error: Unexpected response format from Gemini API"
-            
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Gemini API error: {str(e)}")
-        if hasattr(e, 'response') and e.response:
-            logger.error(f"Response: {e.response.text}")
-            
-            # Try to parse error message from Gemini
-            try:
-                error_data = e.response.json()
-                if 'error' in error_data:
-                    return f"Gemini API error: {error_data['error'].get('message', str(e))}"
-            except:
-                pass
-                
-        return f"Error connecting to Gemini API: {str(e)}"
+        # Format 2: Alternative response structure
+        if 'contents' in data and len(data['contents']) > 0:
+            content = data['contents'][0]
+            if 'parts' in content and len(content['parts']) > 0:
+                if 'text' in content['parts'][0]:
+                    return content['parts'][0]['text'].strip()
+        
+        # Format 3: Simple text response
+        if 'text' in data:
+            return data['text'].strip()
+        
+        # Format 4: GenerateText response
+        if 'candidates' in data and len(data['candidates']) > 0:
+            candidate = data['candidates'][0]
+            if 'output' in candidate:
+                return candidate['output'].strip()
+        
+        logger.error(f"Could not extract text from response: {data}")
+        return None
+        
     except Exception as e:
-        logger.error(f"Unexpected error in Gemini response: {str(e)}")
-        return f"Error processing Gemini response: {str(e)}"
-
+        logger.error(f"Error extracting Gemini text: {str(e)}")
+        return None
+def get_gemini_response_sdk(message, conversation_history=[]):
+    """Get response from Google Gemini API using the official SDK"""
+    try:
+        import google.generativeai as genai
+        
+        if not GEMINI_API_KEY:
+            return "Error: Gemini API key not configured."
+        
+        # Configure the API
+        genai.configure(api_key=GEMINI_API_KEY)
+        
+        # List available models (for debugging)
+        try:
+            models = genai.list_models()
+            logger.info("Available models:")
+            for model in models:
+                logger.info(f"  - {model.name}")
+        except:
+            pass
+        
+        # Try different model names
+        model_names = [
+            'models/gemini-1.5-pro',
+            'models/gemini-1.0-pro',
+            'models/gemini-pro'
+        ]
+        
+        last_error = None
+        
+        for model_name in model_names:
+            try:
+                # Create the model
+                model = genai.GenerativeModel(model_name)
+                
+                # Build context from conversation history
+                context = ""
+                for entry in conversation_history[-3:]:
+                    if entry.get('user'):
+                        context += f"User: {entry['user']}\n"
+                    if entry.get('bot'):
+                        context += f"Assistant: {entry['bot']}\n"
+                
+                # Create prompt with history and current message
+                prompt = f"{context}User: {message}\nAssistant:"
+                
+                # Generate response
+                response = model.generate_content(
+                    prompt,
+                    generation_config=genai.types.GenerationConfig(
+                        temperature=0.7,
+                        max_output_tokens=500,
+                        top_p=0.95,
+                        top_k=40
+                    )
+                )
+                
+                if response.text:
+                    logger.info(f"Successfully used Gemini model: {model_name}")
+                    return response.text.strip()
+                    
+            except Exception as e:
+                last_error = str(e)
+                logger.warning(f"Failed with model {model_name}: {str(e)}")
+                continue
+        
+        return f"Error: Could not generate response with any Gemini model. Last error: {last_error}"
+        
+    except ImportError:
+        return "Error: google-generativeai package not installed. Run: pip install google-generativeai"
+    except Exception as e:
+        logger.error(f"Gemini SDK error: {str(e)}")
+        return f"Error with Gemini SDK: {str(e)}"
 @app.route('/')
 def home():
     return jsonify({
