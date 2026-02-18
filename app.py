@@ -196,13 +196,6 @@ def get_gemini_response(message, conversation_history=[]):
     if not GEMINI_API_KEY:
         return "Error: Gemini API key not configured. Please set GEMINI_API_KEY environment variable."
     
-    # Try different model names and endpoints
-    models_to_try = [
-        "gemini-1.5-pro",  # Latest model
-        "gemini-1.0-pro",   # Stable model
-        "gemini-pro"        # Original model name
-    ]
-    
     # Build context from conversation history
     context = ""
     for entry in conversation_history[-3:]:  # Last 3 exchanges for context
@@ -214,120 +207,95 @@ def get_gemini_response(message, conversation_history=[]):
     # Create prompt with history and current message
     prompt = f"{context}User: {message}\nAssistant:"
     
-    last_error = None
+    # Try the most reliable endpoint first
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={GEMINI_API_KEY}"
     
-    # Try each model until one works
-    for model in models_to_try:
-        try:
-            # Different endpoint formats to try
-            endpoints_to_try = [
-                f"https://generativelanguage.googleapis.com/v1/models/{model}:generateContent",
-                f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
-                f"https://generativelanguage.googleapis.com/v1/models/{model}:generateText",
-                f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateText"
-            ]
-            
-            for endpoint in endpoints_to_try:
-                url = f"{endpoint}?key={GEMINI_API_KEY}"
-                
-                # Try different payload formats
-                payload_formats = [
-                    # Format 1: Standard chat format
+    # Correct payload format for Gemini API
+    payload = {
+        "contents": [
+            {
+                "parts": [
                     {
-                        "contents": [
-                            {
-                                "parts": [
-                                    {
-                                        "text": prompt
-                                    }
-                                ]
-                            }
-                        ],
-                        "generationConfig": {
-                            "temperature": 0.7,
-                            "maxOutputTokens": 500,
-                            "topP": 0.95,
-                            "topK": 40
-                        }
-                    },
-                    # Format 2: Simplified format
-                    {
-                        "prompt": {
-                            "text": prompt
-                        },
-                        "temperature": 0.7,
-                        "max_output_tokens": 500
-                    },
-                    # Format 3: Messages format
-                    {
-                        "messages": [
-                            {
-                                "role": "user",
-                                "parts": [{"text": prompt}]
-                            }
-                        ],
-                        "generationConfig": {
-                            "temperature": 0.7,
-                            "maxOutputTokens": 500
-                        }
+                        "text": prompt
                     }
                 ]
-                
-                for payload in payload_formats:
-                    try:
-                        logger.info(f"Trying Gemini model: {model}, endpoint: {endpoint}")
-                        
-                        headers = {
-                            "Content-Type": "application/json"
-                        }
-                        
-                        response = requests.post(url, headers=headers, json=payload, timeout=30)
-                        
-                        if response.status_code == 200:
-                            data = response.json()
-                            logger.info(f"Success with model: {model}")
-                            
-                            # Try to extract text from different response formats
-                            text = extract_gemini_text(data)
-                            if text:
-                                return text
-                            
-                        elif response.status_code == 404:
-                            continue  # Try next endpoint/model
-                        else:
-                            # Log other errors but continue trying
-                            logger.warning(f"Gemini API error with {model}: {response.status_code} - {response.text}")
-                            
-                    except requests.exceptions.RequestException as e:
-                        last_error = str(e)
-                        continue
-                        
-        except Exception as e:
-            last_error = str(e)
-            continue
-    
-    # If all attempts fail, try the older generateText endpoint as last resort
-    try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateText?key={GEMINI_API_KEY}"
-        payload = {
-            "prompt": {
-                "text": prompt
-            },
+            }
+        ],
+        "generationConfig": {
             "temperature": 0.7,
-            "maxOutputTokens": 500
+            "maxOutputTokens": 500,
+            "topP": 0.95,
+            "topK": 40
         }
+    }
+    
+    headers = {
+        "Content-Type": "application/json"
+    }
+    
+    try:
+        logger.info(f"Sending request to Gemini API with prompt: {prompt[:50]}...")
         
-        response = requests.post(url, json=payload, timeout=30)
+        response = requests.post(url, headers=headers, json=payload, timeout=30)
+        
+        # Log response status for debugging
+        logger.info(f"Gemini API response status: {response.status_code}")
+        
         if response.status_code == 200:
             data = response.json()
-            if 'candidates' in data and len(data['candidates']) > 0:
-                return data['candidates'][0]['output']
-    except:
-        pass
-    
-    logger.error(f"All Gemini API attempts failed. Last error: {last_error}")
-    return f"Error: Could not connect to Gemini API. Please check your API key and try again. Details: {last_error}"
-
+            logger.info(f"Gemini API response received")
+            
+            # Extract text from response
+            try:
+                if 'candidates' in data and len(data['candidates']) > 0:
+                    candidate = data['candidates'][0]
+                    if 'content' in candidate and 'parts' in candidate['content']:
+                        parts = candidate['content']['parts']
+                        if len(parts) > 0 and 'text' in parts[0]:
+                            return parts[0]['text'].strip()
+                
+                # If we can't find the text, return the whole response for debugging
+                logger.error(f"Unexpected response format: {data}")
+                return f"Error: Unexpected response format. Please check logs."
+                
+            except Exception as e:
+                logger.error(f"Error parsing Gemini response: {str(e)}")
+                return f"Error parsing response: {str(e)}"
+        
+        elif response.status_code == 403:
+            error_msg = "API key is invalid or doesn't have access to Gemini API. Please check:"
+            error_msg += "\n1. Your API key is correct"
+            error_msg += "\n2. Gemini API is enabled in Google Cloud Console"
+            error_msg += "\n3. Billing is enabled (if required)"
+            logger.error(f"403 Forbidden: {response.text}")
+            return error_msg
+            
+        elif response.status_code == 429:
+            return "Error: Rate limit exceeded or quota exhausted. Please try again later."
+            
+        else:
+            # Try to parse error message
+            try:
+                error_data = response.json()
+                if 'error' in error_data:
+                    error_msg = error_data['error'].get('message', 'Unknown error')
+                    logger.error(f"Gemini API error: {error_msg}")
+                    return f"Gemini API error: {error_msg}"
+            except:
+                pass
+            
+            logger.error(f"Gemini API error {response.status_code}: {response.text}")
+            return f"Error {response.status_code}: Could not get response from Gemini API"
+            
+    except requests.exceptions.Timeout:
+        logger.error("Gemini API timeout")
+        return "Error: Request to Gemini API timed out"
+    except requests.exceptions.ConnectionError:
+        logger.error("Connection error to Gemini API")
+        return "Error: Could not connect to Gemini API"
+    except Exception as e:
+        logger.error(f"Unexpected error: {str(e)}")
+        return f"Error: {str(e)}"
 def extract_gemini_text(data):
     """Extract text from various Gemini response formats"""
     try:
