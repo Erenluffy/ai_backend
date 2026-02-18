@@ -1,56 +1,49 @@
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify
 from flask_cors import CORS
 import openai
 import uuid
 from datetime import datetime
 import os
+import logging
 
-app = Flask(__name__, static_folder='static', static_url_path='')
-# Enable CORS for all routes
-CORS(app, resources={r"/*": {"origins": "*"}})
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# Store conversations
+app = Flask(__name__)
+
+# Configure CORS for production
+CORS(app, resources={
+    r"/*": {
+        "origins": ["http://localhost", "http://127.0.0.1", "http://your-domain.com", "*"],
+        "methods": ["GET", POST, "OPTIONS", "DELETE"],
+        "allow_headers": ["Content-Type"]
+    }
+})
+
+# Store conversations (use Redis in production)
 conversations = {}
 
-# Your OpenAI API key
-OPENAI_API_KEY = "ravi"
-openai.api_key = OPENAI_API_KEY
+# Get OpenAI key from environment variable
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+if not OPENAI_API_KEY:
+    logger.error("OPENAI_API_KEY not set in environment variables")
+    OPENAI_API_KEY = "your-key-here"  # Fallback, but better to fail
 
-def get_ai_response(message, conversation_history=None):
-    """Get response from OpenAI"""
-    try:
-        messages = [{"role": "system", "content": "You are a helpful AI assistant."}]
-        
-        if conversation_history:
-            for msg in conversation_history[-5:]:
-                messages.append({"role": "user", "content": msg["user"]})
-                messages.append({"role": "assistant", "content": msg["bot"]})
-        
-        messages.append({"role": "user", "content": message})
-        
-        # Using OpenAI API
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=messages,
-            max_tokens=500,
-            temperature=0.7
-        )
-        
-        return response.choices[0].message.content
-        
-    except Exception as e:
-        print(f"OpenAI Error: {str(e)}")
-        return f"Error: {str(e)}"
+openai.api_key = OPENAI_API_KEY
 
 @app.route('/')
 def home():
     return jsonify({
         "status": "online",
-        "message": "AI Chatbot API is running",
-        "server_ip": "178.128.179.242",
-        "port": 5000,
-        "version": "1.0.0"
+        "message": "AI Chatbot API is running in Docker",
+        "version": "1.0.0",
+        "container": True
     })
+
+@app.route('/health')
+def health():
+    return jsonify({"status": "healthy"}), 200
 
 @app.route('/api/chat', methods=['POST', 'OPTIONS'])
 def chat():
@@ -72,7 +65,20 @@ def chat():
             conversations[conversation_id] = []
         
         # Get AI response
-        ai_message = get_ai_response(message, conversations[conversation_id])
+        try:
+            response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": "You are a helpful AI assistant."},
+                    {"role": "user", "content": message}
+                ],
+                max_tokens=500,
+                temperature=0.7
+            )
+            ai_message = response.choices[0].message.content
+        except Exception as e:
+            logger.error(f"OpenAI API error: {str(e)}")
+            ai_message = f"Error getting AI response: {str(e)}"
         
         # Store conversation
         conversations[conversation_id].append({
@@ -88,36 +94,27 @@ def chat():
         })
         
     except Exception as e:
-        print(f"Error: {str(e)}")
-        return jsonify({"success": False, "error": str(e)}), 500
-
-@app.route('/api/test', methods=['GET'])
-def test():
-    return jsonify({"status": "ok", "message": "Backend is working!"})
+        logger.error(f"Chat endpoint error: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
 
 @app.route('/api/history/<conversation_id>', methods=['GET'])
 def get_history(conversation_id):
     if conversation_id in conversations:
-        return jsonify({"success": True, "history": conversations[conversation_id]})
-    return jsonify({"success": False, "error": "Not found"}), 404
-
-@app.route('/api/clear/<conversation_id>', methods=['DELETE', 'OPTIONS'])
-def clear_history(conversation_id):
-    if request.method == 'OPTIONS':
-        return '', 200
-    if conversation_id in conversations:
-        conversations[conversation_id] = []
-        return jsonify({"success": True, "message": "Cleared"})
-    return jsonify({"success": False, "error": "Not found"}), 404
+        return jsonify({
+            "success": True,
+            "history": conversations[conversation_id]
+        })
+    return jsonify({
+        "success": False,
+        "error": "Conversation not found"
+    }), 404
 
 if __name__ == '__main__':
-    print("\n" + "="*60)
-    print("✅ AI CHATBOT BACKEND - RUNNING")
-    print("="*60)
-    print(f"📍 Local URL: http://127.0.0.1:5000")
-    print(f"📍 Network URL: http://178.128.179.242:5000")
-    print(f"📍 Test endpoint: http://178.128.179.242:5000/api/test")
-    print("="*60)
-    print("🚀 Server is ready for connections!")
-    print("="*60 + "\n")
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    port = int(os.getenv('PORT', 5000))
+    debug = os.getenv('FLASK_DEBUG', '0') == '1'
+    
+    logger.info(f"Starting Flask app on port {port}, debug={debug}")
+    app.run(host='0.0.0.0', port=port, debug=debug)
