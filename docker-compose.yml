@@ -1,42 +1,27 @@
 version: '3.8'
 
 services:
-  chatbot-backend:
+  backend:
     build: .
     container_name: ai-chatbot-backend
     ports:
       - "5000:5000"
     environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - FLASK_ENV=production
+      - API_PROVIDER=${API_PROVIDER:-ollama}
+      - OLLAMA_URL=http://host.docker.internal:11434
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama2}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - FLASK_DEBUG=0
     volumes:
-      - ./conversations:/app/conversations
+      - ./:/app
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # For Linux compatibility
     networks:
       - chatbot-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-
-  # Optional: Add Nginx reverse proxy
-  nginx:
-    image: nginx:alpine
-    container_name: chatbot-nginx
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./ssl:/etc/nginx/ssl:ro
-    depends_on:
-      - chatbot-backend
-    networks:
-      - chatbot-network
-    restart: unless-stopped
 
 networks:
   chatbot-network:
