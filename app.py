@@ -26,13 +26,17 @@ CORS(app, resources={
 conversations = {}
 
 # API Configuration
-API_PROVIDER = os.getenv('API_PROVIDER', 'deepseek').lower()  # deepseek, openai, anthropic, etc.
+API_PROVIDER = os.getenv('API_PROVIDER', 'deepseek').lower()  # deepseek, openai, anthropic, gemini
 DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY', '')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
 ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY', '')
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
 
 # DeepSeek configuration
 DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
+
+# Gemini configuration
+GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent"
 
 def get_ai_response(message, conversation_history=[]):
     """Get response from configured AI API"""
@@ -43,8 +47,10 @@ def get_ai_response(message, conversation_history=[]):
         return get_openai_response(message, conversation_history)
     elif API_PROVIDER == 'anthropic':
         return get_anthropic_response(message, conversation_history)
+    elif API_PROVIDER == 'gemini':
+        return get_gemini_response(message, conversation_history)
     else:
-        return f"Error: Unknown API provider '{API_PROVIDER}'. Please set API_PROVIDER to 'deepseek', 'openai', or 'anthropic'."
+        return f"Error: Unknown API provider '{API_PROVIDER}'. Please set API_PROVIDER to 'deepseek', 'openai', 'anthropic', or 'gemini'."
 
 def get_deepseek_response(message, conversation_history=[]):
     """Get response from DeepSeek API"""
@@ -137,26 +143,28 @@ def get_anthropic_response(message, conversation_history=[]):
         "content-type": "application/json"
     }
     
-    # Prepare conversation
-    prompt = "Human: You are a helpful AI assistant.\n\n"
+    # Prepare messages with conversation history
+    messages = []
+    
+    # Add system message
+    system_message = "You are a helpful AI assistant."
     
     # Add conversation history
     for entry in conversation_history[-5:]:
         if entry.get('user'):
-            prompt += f"Human: {entry['user']}\n\n"
+            messages.append({"role": "user", "content": entry['user']})
         if entry.get('bot'):
-            prompt += f"Assistant: {entry['bot']}\n\n"
+            messages.append({"role": "assistant", "content": entry['bot']})
     
     # Add current message
-    prompt += f"Human: {message}\n\nAssistant:"
+    messages.append({"role": "user", "content": message})
     
     payload = {
         "model": "claude-3-haiku-20240307",
         "max_tokens": 500,
         "temperature": 0.7,
-        "messages": [
-            {"role": "user", "content": message}
-        ]
+        "system": system_message,
+        "messages": messages
     }
     
     try:
@@ -169,13 +177,110 @@ def get_anthropic_response(message, conversation_history=[]):
         data = response.json()
         
         if 'content' in data and len(data['content']) > 0:
-            return data['content'][0]['text']
+            # Extract text from content blocks
+            content = data['content'][0]
+            if content['type'] == 'text':
+                return content['text']
+            else:
+                return str(content)
         else:
             return "Error: Unexpected response format from Anthropic API"
             
     except Exception as e:
         logger.error(f"Anthropic API error: {str(e)}")
+        if hasattr(e, 'response') and e.response:
+            logger.error(f"Response: {e.response.text}")
         return f"Error getting Anthropic response: {str(e)}"
+
+def get_gemini_response(message, conversation_history=[]):
+    """Get response from Google Gemini API"""
+    if not GEMINI_API_KEY:
+        return "Error: Gemini API key not configured. Please set GEMINI_API_KEY environment variable."
+    
+    # Build context from conversation history
+    context = ""
+    for entry in conversation_history[-5:]:  # Last 5 exchanges for context
+        if entry.get('user'):
+            context += f"User: {entry['user']}\n"
+        if entry.get('bot'):
+            context += f"Assistant: {entry['bot']}\n"
+    
+    # Create prompt with history and current message
+    prompt = f"{context}User: {message}\nAssistant:"
+    
+    # Prepare the request payload for Gemini
+    url = f"{GEMINI_API_URL}?key={GEMINI_API_KEY}"
+    
+    payload = {
+        "contents": [
+            {
+                "parts": [
+                    {
+                        "text": prompt
+                    }
+                ]
+            }
+        ],
+        "generationConfig": {
+            "temperature": 0.7,
+            "maxOutputTokens": 500,
+            "topP": 0.95,
+            "topK": 40
+        },
+        "safetySettings": [
+            {
+                "category": "HARM_CATEGORY_HARASSMENT",
+                "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+            },
+            {
+                "category": "HARM_CATEGORY_HATE_SPEECH",
+                "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+            },
+            {
+                "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+            },
+            {
+                "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+                "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+            }
+        ]
+    }
+    
+    try:
+        response = requests.post(url, json=payload)
+        response.raise_for_status()
+        data = response.json()
+        
+        # Extract the response text from Gemini's response format
+        if 'candidates' in data and len(data['candidates']) > 0:
+            candidate = data['candidates'][0]
+            if 'content' in candidate and 'parts' in candidate['content']:
+                parts = candidate['content']['parts']
+                if len(parts) > 0 and 'text' in parts[0]:
+                    return parts[0]['text'].strip()
+        
+        # If we can't find the text in the expected format, log and return error
+        logger.error(f"Unexpected Gemini response format: {data}")
+        return "Error: Unexpected response format from Gemini API"
+            
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Gemini API error: {str(e)}")
+        if hasattr(e, 'response') and e.response:
+            logger.error(f"Response: {e.response.text}")
+            
+            # Try to parse error message from Gemini
+            try:
+                error_data = e.response.json()
+                if 'error' in error_data:
+                    return f"Gemini API error: {error_data['error'].get('message', str(e))}"
+            except:
+                pass
+                
+        return f"Error connecting to Gemini API: {str(e)}"
+    except Exception as e:
+        logger.error(f"Unexpected error in Gemini response: {str(e)}")
+        return f"Error processing Gemini response: {str(e)}"
 
 @app.route('/')
 def home():
@@ -201,7 +306,8 @@ def get_config():
         "api_provider": API_PROVIDER,
         "deepseek_configured": bool(DEEPSEEK_API_KEY),
         "openai_configured": bool(OPENAI_API_KEY),
-        "anthropic_configured": bool(ANTHROPIC_API_KEY)
+        "anthropic_configured": bool(ANTHROPIC_API_KEY),
+        "gemini_configured": bool(GEMINI_API_KEY)
     })
 
 @app.route('/api/chat', methods=['POST', 'OPTIONS'])
@@ -283,5 +389,7 @@ if __name__ == '__main__':
         logger.warning("OPENAI_API_KEY not set! OpenAI API will not work.")
     elif API_PROVIDER == 'anthropic' and not ANTHROPIC_API_KEY:
         logger.warning("ANTHROPIC_API_KEY not set! Anthropic API will not work.")
+    elif API_PROVIDER == 'gemini' and not GEMINI_API_KEY:
+        logger.warning("GEMINI_API_KEY not set! Gemini API will not work.")
     
     app.run(host='0.0.0.0', port=port, debug=debug)
