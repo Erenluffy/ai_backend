@@ -26,7 +26,7 @@ CORS(app, resources={
 conversations = {}
 
 # API Configuration
-API_PROVIDER = os.getenv('API_PROVIDER', 'openai').lower()  # deepseek, openai, anthropic, gemini
+API_PROVIDER = os.getenv('API_PROVIDER', 'deepseek').lower()  # deepseek, openai, anthropic, gemini
 DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY', '')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
 ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY', '')
