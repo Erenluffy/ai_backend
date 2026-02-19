@@ -493,14 +493,16 @@ def clear_conversation(conversation_id):
         return jsonify({"success": True})
     return jsonify({"success": False, "error": "Conversation not found"}), 404
 
+# Add this configuration that runs for both gunicorn and direct execution
+port = int(os.getenv('PORT', 5000))
+debug = os.getenv('FLASK_DEBUG', '0') == '1'
+
+logger.info(f"Starting Flask app on port {port}, debug={debug}")
+logger.info(f"Using API provider: {API_PROVIDER}")
+
+if API_PROVIDER == 'ollama':
+    logger.info(f"Ollama configured with model: {OLLAMA_MODEL}, URL: {OLLAMA_URL}")
+
+# This only runs when executing directly (python app.py), not with gunicorn
 if __name__ == '__main__':
-    port = int(os.getenv('PORT', 5000))
-    debug = os.getenv('FLASK_DEBUG', '0') == '1'
-    
-    logger.info(f"Starting Flask app on port {port}, debug={debug}")
-    logger.info(f"Using API provider: {API_PROVIDER}")
-    
-    if API_PROVIDER == 'ollama':
-        logger.info(f"Ollama configured with model: {OLLAMA_MODEL}, URL: {OLLAMA_URL}")
-    
     app.run(host='0.0.0.0', port=port, debug=debug)
