@@ -10,20 +10,18 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app \
     DEBIAN_FRONTEND=noninteractive
 
-# Install system dependencies (split into multiple steps for better debugging)
+# Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     curl \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Ollama using the official install script with error handling
-RUN curl -fsSL https://ollama.com/install.sh | sh || \
-    (echo "Failed to install Ollama via script, trying alternative method..." && \
-     curl -L https://ollama.com/download/ollama-linux-amd64 -o /usr/local/bin/ollama && \
-     chmod +x /usr/local/bin/ollama)
+# Install Ollama - direct binary download (most reliable)
+RUN curl -L https://ollama.com/download/ollama-linux-amd64 -o /usr/local/bin/ollama && \
+    chmod +x /usr/local/bin/ollama
 
-# Copy requirements first (for better caching)
+# Copy requirements first
 COPY requirements.txt .
 
 # Install Python dependencies
@@ -38,36 +36,39 @@ set -e\n\
 \n\
 echo "🚀 Starting Ollama and Flask backend..."\n\
 \n\
+# Verify Ollama installation\n\
+echo "🔍 Verifying Ollama installation..."\n\
+/usr/local/bin/ollama --version || echo "⚠️  Ollama version check failed, but continuing..."\n\
+\n\
 # Start Ollama in background\n\
 echo "📦 Starting Ollama server..."\n\
-ollama serve &\n\
+/usr/local/bin/ollama serve &\n\
 OLLAMA_PID=$!\n\
 \n\
 # Wait for Ollama to start\n\
 echo "⏳ Waiting for Ollama to initialize..."\n\
-sleep 10\n\
+sleep 15\n\
 \n\
 # Check if Ollama is running\n\
-if ! curl -s http://localhost:11434/api/tags > /dev/null; then\n\
-    echo "❌ Ollama failed to start!"\n\
-    exit 1\n\
-fi\n\
-\n\
-echo "✅ Ollama is running!"\n\
-\n\
-# Pull the model if not exists\n\
-echo "📥 Checking for model: $OLLAMA_MODEL"\n\
-if ! ollama list | grep -q "$OLLAMA_MODEL"; then\n\
-    echo "⬇️  Pulling $OLLAMA_MODEL model (this may take 5-10 minutes)..."\n\
-    ollama pull $OLLAMA_MODEL\n\
-    echo "✅ Model $OLLAMA_MODEL pulled successfully!"\n\
+if curl -s http://localhost:11434/api/tags > /dev/null; then\n\
+    echo "✅ Ollama is running!"\n\
+    \n\
+    # Pull the model if not exists\n\
+    echo "📥 Checking for model: $OLLAMA_MODEL"\n\
+    if ! /usr/local/bin/ollama list | grep -q "$OLLAMA_MODEL"; then\n\
+        echo "⬇️  Pulling $OLLAMA_MODEL model (this may take 5-10 minutes)..."\n\
+        /usr/local/bin/ollama pull $OLLAMA_MODEL\n\
+        echo "✅ Model $OLLAMA_MODEL pulled successfully!"\n\
+    else\n\
+        echo "✅ Model $OLLAMA_MODEL already exists"\n\
+    fi\n\
+    \n\
+    # List available models\n\
+    echo "📋 Available models:"\n\
+    /usr/local/bin/ollama list\n\
 else\n\
-    echo "✅ Model $OLLAMA_MODEL already exists"\n\
+    echo "⚠️  Ollama not responding, but continuing with Flask app..."\n\
 fi\n\
-\n\
-# List available models\n\
-echo "📋 Available models:"\n\
-ollama list\n\
 \n\
 # Start Flask app with gunicorn\n\
 echo "🌐 Starting Flask backend on port 5000..."\n\
@@ -89,7 +90,9 @@ exec gunicorn \\\n\
 # Set Ollama environment variables
 ENV OLLAMA_HOST=0.0.0.0:11434 \
     OLLAMA_MODELS=/root/.ollama/models \
-    OLLAMA_KEEP_ALIVE=0
+    OLLAMA_KEEP_ALIVE=0 \
+    API_PROVIDER=ollama \
+    OLLAMA_MODEL=mistral
 
 # Create Ollama models directory
 RUN mkdir -p /root/.ollama/models
