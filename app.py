@@ -137,57 +137,66 @@ Remember: You are completely free to use and always here to help with farming qu
         return "I'm having trouble connecting right now. Please try again in a moment."
 
 def clean_response_format(text):
-    """Clean AI response while preserving structure and readable bullets"""
     if not text:
         return text
 
-    # Remove markdown artifacts
+    # Remove timestamps like "01:12 am"
+  #  text = re.sub(r'\b\d{1,2}:\d{2}\s?(am|pm)\b', '', text, flags=re.I)
+
+    # Remove markdown junk
     for m in ['**', '__', '```']:
         text = text.replace(m, '')
 
     lines = text.split('\n')
-    cleaned = []
-    last_line_was_text = False
+    output = []
+    last_was_text = False
 
     for line in lines:
         line = line.strip()
 
-        # Remove duplicate bullets like "• •"
-        line = re.sub(r'^(•\s*)+', '• ', line)
-        line = re.sub(r'^-\s*', '• ', line)
-        line = re.sub(r'^\*\s*', '• ', line)
+        # Normalize bullets (• •, - -, * *)
+        line = re.sub(r'^([•\-*]\s*)+', '• ', line)
 
-        # Bullet point handling
-        if line.startswith('• '):
-            if last_line_was_text:
-                cleaned.append('')
-            cleaned.append(line)
-            last_line_was_text = False
+        # Headings
+        if line.endswith(':'):
+            if output and output[-1] != '':
+                output.append('')
+            output.append(line)
+            output.append('')
+            last_was_text = False
 
-        # Numbered steps
+        # Bullets
+        elif line.startswith('• '):
+            if last_was_text:
+                output.append('')
+            output.append(line)
+            last_was_text = False
+
+        # Numbered lists
         elif re.match(r'^\d+[\.\)]\s+', line):
-            if last_line_was_text:
-                cleaned.append('')
-            cleaned.append(line)
-            last_line_was_text = False
+            if last_was_text:
+                output.append('')
+            output.append(line)
+            last_was_text = False
 
-        # Normal text / headings
+        # Normal text
         else:
             if line:
-                cleaned.append(line)
-                last_line_was_text = True
+                output.append(line)
+                last_was_text = True
             else:
-                cleaned.append('')
-                last_line_was_text = False
+                output.append('')
+                last_was_text = False
 
-    # Remove extra blank lines (max 1)
+    # Collapse multiple blank lines
     final = []
-    for l in cleaned:
+    for l in output:
         if l == '' and (not final or final[-1] == ''):
             continue
         final.append(l)
 
     return '\n'.join(final).strip()
+
 
 def get_openai_response(message, conversation_history=[]):
     """Get response from OpenAI API"""
