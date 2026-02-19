@@ -76,6 +76,13 @@ Guidelines:
 6. Be encouraging and supportive of sustainable farming practices
 7. Never mention that you're using an AI API or that you have limitations
 8. Respond as if you're a knowledgeable agricultural consultant
+9. FORMATTING RULES - IMPORTANT:
+   - NEVER use ** or any markdown formatting
+   - Use simple bullet points with • or - for lists
+   - For numbered steps, use 1., 2., etc.
+   - Keep paragraphs short and readable
+   - Use clear headings with plain text followed by a colon
+   - Separate sections with blank lines
 
 Remember: You are completely free to use and always here to help with farming questions!"""
     
@@ -92,7 +99,9 @@ Remember: You are completely free to use and always here to help with farming qu
         if entry.get('user'):
             messages.append({"role": "user", "content": entry['user']})
         if entry.get('bot'):
-            messages.append({"role": "assistant", "content": entry['bot']})
+            # Clean bot responses before adding to history
+            cleaned_bot = clean_response_format(entry['bot'])
+            messages.append({"role": "assistant", "content": cleaned_bot})
     
     # Add current message
     messages.append({"role": "user", "content": message})
@@ -100,7 +109,7 @@ Remember: You are completely free to use and always here to help with farming qu
     payload = {
         "model": "deepseek-chat",
         "messages": messages,
-        "max_tokens": 200,
+        "max_tokens": 500,  # Increased for better responses
         "temperature": 0.4,
         "stream": False
     }
@@ -111,7 +120,10 @@ Remember: You are completely free to use and always here to help with farming qu
         data = response.json()
         
         if 'choices' in data and len(data['choices']) > 0:
-            return data['choices'][0]['message']['content']
+            raw_response = data['choices'][0]['message']['content']
+            # Clean the response
+            cleaned_response = clean_response_format(raw_response)
+            return cleaned_response
         else:
             logger.error(f"Unexpected DeepSeek response format: {data}")
             return "I'm here to help with your farming questions! Could you please rephrase that?"
@@ -122,6 +134,38 @@ Remember: You are completely free to use and always here to help with farming qu
             logger.error(f"Response: {e.response.text}")
         return "I'm having trouble connecting right now. Please try again in a moment."
 
+def clean_response_format(text):
+    """Clean up formatting in AI responses"""
+    if not text:
+        return text
+    
+    # Remove markdown bold/italic markers
+    text = text.replace('**', '')
+    text = text.replace('*', '')
+    text = text.replace('__', '')
+    text = text.replace('```', '')
+    
+    # Fix bullet points - ensure consistent formatting
+    lines = text.split('\n')
+    cleaned_lines = []
+    
+    for line in lines:
+        # Replace markdown-style lists with plain bullets
+        if line.strip().startswith('- ') or line.strip().startswith('• '):
+            cleaned_lines.append('  • ' + line.strip()[2:])
+        elif line.strip().startswith('* '):
+            cleaned_lines.append('  • ' + line.strip()[2:])
+        # Handle numbered lists
+        elif line.strip() and line.strip()[0].isdigit() and line.strip()[1:3] in ['. ', ') ']:
+            cleaned_lines.append(line)
+        else:
+            cleaned_lines.append(line)
+    
+    # Fix multiple spaces
+    text = '\n'.join(cleaned_lines)
+    text = ' '.join(text.split())
+    
+    return text
 
 def get_openai_response(message, conversation_history=[]):
     """Get response from OpenAI API"""
@@ -447,7 +491,32 @@ def home():
             "Sustainable farming tips"
         ]
     })
-
+def format_farming_response(text):
+    """Additional formatting specifically for farming advice"""
+    if not text:
+        return text
+    
+    # Ensure proper bullet point formatting for common farming tips
+    lines = text.split('\n')
+    formatted_lines = []
+    
+    for line in lines:
+        # Check if line contains key farming terms and should be formatted
+        lower_line = line.lower()
+        
+        # Format sections with clear headings
+        if any(term in lower_line for term in ['immediate actions', 'steps:', 'recommendations:', 'tips:', 'benefits:', 'features:']):
+            formatted_lines.append('\n' + line.strip() + '\n')
+        
+        # Format data points with percentages and numbers nicely
+        elif '%' in line or any(term in line for term in ['increase', 'decrease', 'improve']):
+            # Ensure numbers are clearly presented
+            formatted_lines.append('  • ' + line.strip())
+        
+        else:
+            formatted_lines.append(line)
+    
+    return '\n'.join(formatted_lines)
 @app.route('/health')
 def health():
     return jsonify({
@@ -514,7 +583,10 @@ def chat():
         # Get AI response with SmartMulch context
         ai_message = get_deepseek_response(message, history)
         
-        # Store conversation
+        # Additional formatting for farming-specific responses
+        ai_message = format_farming_response(ai_message)
+        
+        # Store conversation with cleaned response
         conversations[conversation_id].append({
             "user": message,
             "bot": ai_message,
@@ -525,7 +597,8 @@ def chat():
             "success": True,
             "message": ai_message,
             "conversation_id": conversation_id,
-            "assistant": "SmartMulch AI"
+            "assistant": "SmartMulch AI",
+            "formatted": True
         })
         
     except Exception as e:
