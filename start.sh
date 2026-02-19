@@ -21,13 +21,13 @@ if [ -f /usr/local/bin/ollama ]; then
     echo "⏳ Waiting for Ollama to initialize..."
     sleep 10
     
-    # Check if Ollama is running and pull model
+    # Check if Ollama is running
     if curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
         echo "✅ Ollama is running!"
         
-        # Pull the model
-        echo "📥 Pulling mistral model..."
-        /usr/local/bin/ollama pull mistral
+        # Pull smaller model (change this to phi, tinyllama, or gemma:2b)
+        echo "📥 Pulling $OLLAMA_MODEL model (size: ~1.5GB)..."
+        /usr/local/bin/ollama pull $OLLAMA_MODEL
         echo "✅ Model pulled successfully!"
         
         # Verify model is available
@@ -47,8 +47,8 @@ echo "Using Model: $OLLAMA_MODEL"
 
 exec gunicorn \
     --bind 0.0.0.0:5000 \
-    --workers 2 \
-    --threads 4 \
+    --workers 1 \
+    --threads 2 \
     --timeout 300 \
     --log-level info \
     --access-logfile - \
