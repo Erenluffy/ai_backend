@@ -10,11 +10,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app \
     DEBIAN_FRONTEND=noninteractive
 
-# Install system dependencies
+# Install system dependencies including file command
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     curl \
     wget \
+    file \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
@@ -53,7 +54,6 @@ echo "🔍 Verifying Ollama installation..."\n\
 if [ -f /usr/local/bin/ollama ]; then\n\
     echo "✅ Ollama binary found at /usr/local/bin/ollama"\n\
     ls -la /usr/local/bin/ollama\n\
-    file /usr/local/bin/ollama\n\
 else\n\
     echo "❌ Ollama binary not found"\n\
 fi\n\
