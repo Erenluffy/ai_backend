@@ -41,12 +41,15 @@ else
 fi
 
 # Start Flask app
-echo "🌐 Starting Flask backend on port 5000..."
+# Start Flask app with gunicorn - use PORT from environment
+echo "🌐 Starting Flask backend on port ${PORT:-5000}..."
 echo "Using API Provider: $API_PROVIDER"
 echo "Using Model: $OLLAMA_MODEL"
+echo "Ollama URL: $OLLAMA_URL"
 
+# Run gunicorn with dynamic port
 exec gunicorn \
-    --bind 0.0.0.0:5000 \
+    --bind 0.0.0.0:${PORT:-5000} \
     --workers 1 \
     --threads 2 \
     --timeout 300 \
