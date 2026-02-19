@@ -67,88 +67,102 @@ def get_ai_response(message, conversation_history=[]):
         return f"Error: Unknown API provider '{API_PROVIDER}'. Please set API_PROVIDER to 'deepseek', 'openai', 'anthropic', 'gemini', or 'ollama'."
 
 def get_ollama_response(message, conversation_history=[]):
-    """Get response from local Ollama (completely free)"""
+    """Get response from local Ollama"""
     
     # Build context from conversation history
     messages = []
     
-    # Add system message
-    messages.append({"role": "system", "content": "You are a helpful AI assistant."})
+    # Add system message to encourage responses
+    messages.append({"role": "system", "content": "You are a helpful AI assistant. Always provide complete and helpful responses."})
     
     # Add conversation history
-    for entry in conversation_history[-5:]:  # Last 5 exchanges for context
+    for entry in conversation_history[-5:]:
         if entry.get('user'):
             messages.append({"role": "user", "content": entry['user']})
-        if entry.get('bot'):
+        if entry.get('bot') and entry['bot']:
             messages.append({"role": "assistant", "content": entry['bot']})
     
     # Add current message
     messages.append({"role": "user", "content": message})
     
-    # Ollama API payload
+    # Ollama API payload with proper parameters
     payload = {
         "model": OLLAMA_MODEL,
         "messages": messages,
         "stream": False,
         "options": {
-            "temperature": 0.7,
-            "num_predict": 500
+            "temperature": 0.8,  # Slightly higher for creativity
+            "num_predict": 500,    # Ensure it generates enough tokens
+            "top_k": 40,
+            "top_p": 0.9,
+            "stop": ["Human:", "\n\n"]  # Stop sequences
         }
     }
     
-    # Retry logic for Ollama
-    max_retries = 3
-    retry_delay = 2
-    
-    for attempt in range(max_retries):
-        try:
-            logger.info(f"Sending request to Ollama with model: {OLLAMA_MODEL} (attempt {attempt + 1}/{max_retries})")
+    try:
+        logger.info(f"Sending request to Ollama with model: {OLLAMA_MODEL}")
+        
+        response = requests.post(
+            f"{OLLAMA_URL}/api/chat",
+            json=payload,
+            timeout=120
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            logger.info(f"Ollama response: {data}")
             
-            response = requests.post(
-                f"{OLLAMA_URL}/api/chat",
-                json=payload,
-                timeout=120  # Increased timeout for first response
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                if 'message' in data and 'content' in data['message']:
-                    return data['message']['content'].strip()
-                else:
-                    logger.error(f"Unexpected Ollama response format: {data}")
-                    return "Error: Unexpected response format from Ollama"
-            elif response.status_code == 404:
-                return f"Error: Model '{OLLAMA_MODEL}' not found. Please pull it first."
-            elif response.status_code == 500:
-                if attempt < max_retries - 1:
-                    logger.warning(f"Ollama server error, retrying in {retry_delay}s...")
-                    time.sleep(retry_delay)
-                    continue
-                return "Error: Ollama server error. Please try again."
+            # Extract content properly
+            if 'message' in data and 'content' in data['message']:
+                content = data['message']['content'].strip()
+                # If empty, try a fallback
+                if not content:
+                    # Try a simpler format
+                    return get_ollama_simple_response(message, conversation_history)
+                return content
             else:
-                logger.error(f"Ollama API error {response.status_code}: {response.text}")
-                return f"Error {response.status_code}: Could not get response from Ollama"
-                
-        except requests.exceptions.ConnectionError:
-            if attempt < max_retries - 1:
-                logger.warning(f"Cannot connect to Ollama, retrying in {retry_delay}s...")
-                time.sleep(retry_delay)
-                continue
-            logger.error("Cannot connect to Ollama. Is it running?")
-            return "Error: Cannot connect to Ollama. Please make sure Ollama is running."
-        except requests.exceptions.Timeout:
-            if attempt < max_retries - 1:
-                logger.warning(f"Ollama request timeout, retrying in {retry_delay}s...")
-                time.sleep(retry_delay)
-                continue
-            logger.error("Ollama request timeout")
-            return "Error: Ollama request timed out. The model might still be loading."
-        except Exception as e:
-            logger.error(f"Unexpected error with Ollama: {str(e)}")
-            return f"Error with Ollama: {str(e)}"
-    
-    return "Error: Max retries exceeded"
+                logger.error(f"Unexpected Ollama response format: {data}")
+                return "Error: Unexpected response format from Ollama"
+        else:
+            logger.error(f"Ollama API error {response.status_code}: {response.text}")
+            return f"Error {response.status_code}: Could not get response from Ollama"
+            
+    except Exception as e:
+        logger.error(f"Error with Ollama: {str(e)}")
+        return f"Error: {str(e)}"
 
+def get_ollama_simple_response(message, conversation_history=[]):
+    """Fallback: Simpler prompt format"""
+    try:
+        # Simpler prompt format
+        prompt = f"Human: {message}\n\nAssistant:"
+        
+        payload = {
+            "model": OLLAMA_MODEL,
+            "prompt": prompt,  # Use prompt instead of messages
+            "stream": False,
+            "options": {
+                "temperature": 0.8,
+                "num_predict": 500
+            }
+        }
+        
+        response = requests.post(
+            f"{OLLAMA_URL}/api/generate",  # Use generate endpoint
+            json=payload,
+            timeout=120
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            if 'response' in data:
+                return data['response'].strip()
+        
+        return "I'm here to help! How can I assist you today?"
+        
+    except Exception as e:
+        logger.error(f"Simple response error: {str(e)}")
+        return "I'm here to help! How can I assist you today?"
 def get_deepseek_response(message, conversation_history=[]):
     """Get response from DeepSeek API"""
     if not DEEPSEEK_API_KEY:
