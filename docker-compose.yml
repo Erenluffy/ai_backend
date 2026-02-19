@@ -7,13 +7,9 @@ services:
     ports:
       - "5000:5000"
     environment:
-      - API_PROVIDER=${API_PROVIDER:-ollama}
+      - API_PROVIDER=ollama
       - OLLAMA_URL=http://host.docker.internal:11434
-      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama2}
-      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - OLLAMA_MODEL=mistral
       - FLASK_DEBUG=0
     volumes:
       - ./:/app
