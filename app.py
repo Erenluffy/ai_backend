@@ -83,6 +83,38 @@ Guidelines:
    - Keep paragraphs short and readable
    - Use clear headings with plain text followed by a colon
    - Separate sections with blank lines
+   - Each bullet point MUST be on its own new line
+    - Use this exact format for lists:
+      
+      Main Point:
+        • First bullet point (on its own line)
+        • Second bullet point (on its own line)
+        • Third bullet point (on its own line)
+      
+    - For numbered steps, use:
+      
+      1. First step (on its own line)
+      2. Second step (on its own line)
+      3. Third step (on its own line)
+      
+    - Put a blank line before starting a new list or section
+    - Keep paragraphs short (2-3 sentences max)
+    - Separate different topics with blank lines
+    - Present data clearly with numbers and percentages on their own lines
+    
+    Example of CORRECT formatting:
+    
+    Soil Moisture Results:
+      • With mulch: 49.92% average moisture
+      • Without mulch: 28.15% average moisture
+      • Difference: 77% better water retention with mulch
+    
+    Temperature Analysis:
+      • Mulched soil: 22.04°C average, decreasing trend
+      • Unmulched soil: 22.39°C average, increasing trend
+      • Benefit: Mulch stabilizes soil temperature
+    
+    Remember: Each bullet point MUST start on a new line!
 
 Remember: You are completely free to use and always here to help with farming questions!"""
     
@@ -133,9 +165,8 @@ Remember: You are completely free to use and always here to help with farming qu
         if hasattr(e, 'response') and e.response:
             logger.error(f"Response: {e.response.text}")
         return "I'm having trouble connecting right now. Please try again in a moment."
-
 def clean_response_format(text):
-    """Clean up formatting in AI responses"""
+    """Clean up formatting in AI responses with proper line breaks for bullet points"""
     if not text:
         return text
     
@@ -145,27 +176,101 @@ def clean_response_format(text):
     text = text.replace('__', '')
     text = text.replace('```', '')
     
-    # Fix bullet points - ensure consistent formatting
+    # Fix bullet points - ensure each bullet is on its own line
     lines = text.split('\n')
     cleaned_lines = []
     
     for line in lines:
-        # Replace markdown-style lists with plain bullets
-        if line.strip().startswith('- ') or line.strip().startswith('• '):
+        line = line.rstrip()  # Remove trailing spaces
+        
+        # Handle bullet points that might be stuck together
+        if '•' in line:
+            # Split line if it has multiple bullets without line breaks
+            parts = line.split('•')
+            for i, part in enumerate(parts):
+                if i == 0 and part.strip():  # Text before first bullet
+                    cleaned_lines.append(part.strip())
+                elif part.strip():  # Bullet content
+                    cleaned_lines.append('  • ' + part.strip())
+        # Handle dash bullets
+        elif line.strip().startswith('- '):
             cleaned_lines.append('  • ' + line.strip()[2:])
+        # Handle asterisk bullets
         elif line.strip().startswith('* '):
             cleaned_lines.append('  • ' + line.strip()[2:])
         # Handle numbered lists
         elif line.strip() and line.strip()[0].isdigit() and line.strip()[1:3] in ['. ', ') ']:
             cleaned_lines.append(line)
-        else:
+        # Regular text
+        elif line.strip():
             cleaned_lines.append(line)
+        # Empty line
+        else:
+            cleaned_lines.append('')
     
-    # Fix multiple spaces
-    text = '\n'.join(cleaned_lines)
-    text = ' '.join(text.split())
+    # Additional pass to ensure bullet points are properly separated
+    final_lines = []
+    for i, line in enumerate(cleaned_lines):
+        if line.startswith('  • '):
+            # Ensure blank line before new section of bullets
+            if i > 0 and not cleaned_lines[i-1].startswith('  • ') and cleaned_lines[i-1] != '':
+                final_lines.append('')
+            final_lines.append(line)
+        else:
+            final_lines.append(line)
     
-    return text
+    return '\n'.join(final_lines)
+
+def format_farming_response(text):
+    """Additional formatting specifically for farming advice with proper line breaks"""
+    if not text:
+        return text
+    
+    lines = text.split('\n')
+    formatted_lines = []
+    
+    for line in lines:
+        line = line.rstrip()
+        lower_line = line.lower()
+        
+        # Format section headings
+        if any(term in lower_line for term in ['immediate actions:', 'steps:', 'recommendations:', 
+                                               'tips:', 'benefits:', 'features:', 'key findings:',
+                                               'summary:', 'conclusion:', 'results:', 'analysis:']):
+            formatted_lines.append('')
+            formatted_lines.append(line.strip())
+            formatted_lines.append('')
+        
+        # Format data points with percentages and comparisons
+        elif '%' in line or any(term in line for term in ['increase', 'decrease', 'improve', 'average']):
+            if line.strip() and not line.strip().startswith('  • '):
+                formatted_lines.append('  • ' + line.strip())
+            else:
+                formatted_lines.append(line)
+        
+        # Regular text
+        elif line.strip():
+            formatted_lines.append(line)
+        else:
+            formatted_lines.append('')
+    
+    # Ensure proper spacing around bullet points
+    final_lines = []
+    in_bullet_section = False
+    
+    for i, line in enumerate(formatted_lines):
+        if line.startswith('  • '):
+            if not in_bullet_section and i > 0 and formatted_lines[i-1] != '':
+                final_lines.append('')
+            final_lines.append(line)
+            in_bullet_section = True
+        else:
+            if in_bullet_section and line:
+                final_lines.append('')
+            final_lines.append(line)
+            in_bullet_section = False
+    
+    return '\n'.join(final_lines)
 
 def get_openai_response(message, conversation_history=[]):
     """Get response from OpenAI API"""
@@ -583,7 +688,8 @@ def chat():
         # Get AI response with SmartMulch context
         ai_message = get_deepseek_response(message, history)
         
-        # Additional formatting for farming-specific responses
+        # Apply both cleaning functions for optimal formatting
+        ai_message = clean_response_format(ai_message)
         ai_message = format_farming_response(ai_message)
         
         # Store conversation with cleaned response
