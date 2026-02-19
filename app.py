@@ -35,7 +35,7 @@ GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
 
 # Ollama configuration
 OLLAMA_URL = os.getenv('OLLAMA_URL', 'http://localhost:11434')
-OLLAMA_MODEL = os.getenv('OLLAMA_MODEL', 'mistral')
+OLLAMA_MODEL = os.getenv('OLLAMA_MODEL', 'phi')  # Default to phi now
 
 # DeepSeek configuration
 DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
