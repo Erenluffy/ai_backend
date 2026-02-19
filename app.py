@@ -51,24 +51,47 @@ def get_ai_response(message, conversation_history=[]):
         return get_gemini_response(message, conversation_history)
     else:
         return f"Error: Unknown API provider '{API_PROVIDER}'. Please set API_PROVIDER to 'deepseek', 'openai', 'anthropic', or 'gemini'."
-
 def get_deepseek_response(message, conversation_history=[]):
-    """Get response from DeepSeek API"""
+    """Get response from DeepSeek API with SmartMulch context"""
     if not DEEPSEEK_API_KEY:
-        return "Error: DeepSeek API key not configured. Please set DEEPSEEK_API_KEY environment variable."
+        return "I'm sorry, but the AI service is not properly configured. Please contact support."
+    
+    # Get relevant context from knowledge base
+    context = knowledge_base.get_context_for_query(message)
+    
+    # Create system prompt with SmartMulch context
+    system_prompt = f"""You are SmartMulch AI Assistant, a helpful agricultural expert specializing in smart farming, mulching techniques, and sustainable agriculture.
+
+You have access to the following information about SmartMulch and agriculture:
+
+{context}
+
+Guidelines:
+1. Always be helpful, friendly, and professional
+2. Focus on agriculture, farming, and SmartMulch products
+3. If asked about topics outside agriculture, politely redirect to farming topics
+4. Provide practical, actionable advice for farmers
+5. Mention SmartMulch products when relevant, but don't force it
+6. Be encouraging and supportive of sustainable farming practices
+7. Never mention that you're using an AI API or that you have limitations
+8. Respond as if you're a knowledgeable agricultural consultant
+
+Remember: You are completely free to use and always here to help with farming questions!"""
     
     headers = {
         "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
         "Content-Type": "application/json"
     }
     
-    # Prepare messages with conversation history
-    messages = [{"role": "system", "content": "You are a helpful AI assistant."}]
+    # Prepare messages
+    messages = [{"role": "system", "content": system_prompt}]
     
-    # Add conversation history if needed
-    for entry in conversation_history[-5:]:  # Last 5 exchanges for context
-        messages.append({"role": "user", "content": entry.get('user', '')})
-        messages.append({"role": "assistant", "content": entry.get('bot', '')})
+    # Add conversation history
+    for entry in conversation_history[-5:]:
+        if entry.get('user'):
+            messages.append({"role": "user", "content": entry['user']})
+        if entry.get('bot'):
+            messages.append({"role": "assistant", "content": entry['bot']})
     
     # Add current message
     messages.append({"role": "user", "content": message})
@@ -76,8 +99,8 @@ def get_deepseek_response(message, conversation_history=[]):
     payload = {
         "model": "deepseek-chat",
         "messages": messages,
-        "max_tokens": 500,
-        "temperature": 0.7,
+        "max_tokens": 200,
+        "temperature": 0.4,
         "stream": False
     }
     
@@ -86,18 +109,18 @@ def get_deepseek_response(message, conversation_history=[]):
         response.raise_for_status()
         data = response.json()
         
-        # Extract the response text
         if 'choices' in data and len(data['choices']) > 0:
             return data['choices'][0]['message']['content']
         else:
             logger.error(f"Unexpected DeepSeek response format: {data}")
-            return "Error: Unexpected response format from DeepSeek API"
+            return "I'm here to help with your farming questions! Could you please rephrase that?"
             
     except requests.exceptions.RequestException as e:
         logger.error(f"DeepSeek API error: {str(e)}")
         if hasattr(e, 'response') and e.response:
             logger.error(f"Response: {e.response.text}")
-        return f"Error connecting to DeepSeek API: {str(e)}"
+        return "I'm having trouble connecting right now. Please try again in a moment."
+
 
 def get_openai_response(message, conversation_history=[]):
     """Get response from OpenAI API"""
@@ -413,19 +436,47 @@ def get_gemini_response_sdk(message, conversation_history=[]):
 def home():
     return jsonify({
         "status": "online",
-        "message": "AI Chatbot API is running",
-        "version": "1.0.0",
-        "api_provider": API_PROVIDER,
-        "container": True
+        "message": "SmartMulch AI Assistant is ready to help!",
+        "version": "2.0.0",
+        "features": [
+            "Farming recommendations",
+            "Crop guides",
+            "Soil analysis",
+            "Smart mulching advice",
+            "Sustainable farming tips"
+        ]
     })
 
 @app.route('/health')
 def health():
     return jsonify({
         "status": "healthy",
-        "api_provider": API_PROVIDER
+        "service": "SmartMulch AI Assistant"
     }), 200
 
+@app.route('/api/knowledge/search', methods=['POST'])
+def search_knowledge():
+    """Search the knowledge base directly"""
+    data = request.get_json()
+    query = data.get('query', '')
+    
+    if not query:
+        return jsonify({"error": "Query required"}), 400
+    
+    results = knowledge_base.search_knowledge(query)
+    return jsonify({
+        "success": True,
+        "results": results
+    })
+
+@app.route('/api/knowledge/topics', methods=['GET'])
+def get_topics():
+    """Get all main topics in knowledge base"""
+    topics = list(knowledge_base.knowledge.keys())
+    return jsonify({
+        "success": True,
+        "topics": topics
+    })
 @app.route('/api/config')
 def get_config():
     """Get current API configuration"""
@@ -456,11 +507,11 @@ def chat():
         if conversation_id not in conversations:
             conversations[conversation_id] = []
         
-        # Get conversation history for context
+        # Get conversation history
         history = conversations[conversation_id]
         
-        # Get AI response from configured provider
-        ai_message = get_ai_response(message, history)
+        # Get AI response with SmartMulch context
+        ai_message = get_deepseek_response(message, history)
         
         # Store conversation
         conversations[conversation_id].append({
@@ -473,16 +524,15 @@ def chat():
             "success": True,
             "message": ai_message,
             "conversation_id": conversation_id,
-            "api_provider": API_PROVIDER
+            "assistant": "SmartMulch AI"
         })
         
     except Exception as e:
         logger.error(f"Chat endpoint error: {str(e)}")
         return jsonify({
             "success": False,
-            "error": str(e)
+            "error": "I'm having trouble processing your request. Please try again."
         }), 500
-
 @app.route('/api/history/<conversation_id>', methods=['GET'])
 def get_history(conversation_id):
     if conversation_id in conversations:
