@@ -21,13 +21,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Download and install Ollama properly
 RUN set -ex && \
-    # Download the binary directly from GitHub
     wget -q https://github.com/ollama/ollama/releases/download/v0.1.46/ollama-linux-amd64 -O /tmp/ollama && \
-    # Verify it's a binary file (not HTML/error page)
     file /tmp/ollama | grep -q "ELF" || (echo "Downloaded file is not a valid binary" && exit 1) && \
-    # Install the binary
     install -o root -g root -m 0755 /tmp/ollama /usr/local/bin/ollama && \
-    # Clean up
     rm /tmp/ollama
 
 # Verify the installation
@@ -61,11 +57,9 @@ fi\n\
 # Start Ollama in background\n\
 if [ -f /usr/local/bin/ollama ]; then\n\
     echo "📦 Starting Ollama server..."\n\
-    # Start Ollama with explicit host binding\n\
     OLLAMA_HOST=0.0.0.0:11434 /usr/local/bin/ollama serve &\n\
     OLLAMA_PID=$!\n\
     \n\
-    # Wait for Ollama to start with better checking\n\
     echo "⏳ Waiting for Ollama to initialize..."\n\
     MAX_RETRIES=30\n\
     RETRY_COUNT=0\n\
@@ -81,14 +75,12 @@ if [ -f /usr/local/bin/ollama ]; then\n\
     \n\
     if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then\n\
         echo "⚠️  Ollama failed to respond within timeout"\n\
-        # Check if process is still running\n\
         if kill -0 $OLLAMA_PID 2>/dev/null; then\n\
             echo "✅ Ollama process is still running"\n\
         else\n\
             echo "❌ Ollama process died"\n\
         fi\n\
     else\n\
-        # Pull the model if not exists\n\
         echo "📥 Checking for model: $OLLAMA_MODEL"\n\
         if ! /usr/local/bin/ollama list | grep -q "$OLLAMA_MODEL"; then\n\
             echo "⬇️  Pulling $OLLAMA_MODEL model (this may take 5-10 minutes)..."\n\
@@ -97,8 +89,6 @@ if [ -f /usr/local/bin/ollama ]; then\n\
         else\n\
             echo "✅ Model $OLLAMA_MODEL already exists"\n\
         fi\n\
-        \n\
-        # List available models\n\
         echo "📋 Available models:"\n\
         /usr/local/bin/ollama list\n\
     fi\n\
@@ -106,24 +96,22 @@ else\n\
     echo "⚠️  Ollama not installed - running Flask only"\n\
 fi\n\
 \n\
-# Start Flask app with gunicorn\n\
-echo "🌐 Starting Flask backend on port 5000..."\n\
+# Start Flask app with gunicorn - use PORT from environment\n\
+echo "🌐 Starting Flask backend on port ${PORT:-5000}..."\n\
 echo "Using API Provider: $API_PROVIDER"\n\
 echo "Using Model: $OLLAMA_MODEL"\n\
 echo "Ollama URL: $OLLAMA_URL"\n\
 \n\
-# Run gunicorn\n\
-# Run gunicorn with dynamic port from Render
-echo "🌐 Starting Flask backend on port ${PORT:-5000}..."
-exec gunicorn \
-    --bind 0.0.0.0:${PORT:-5000} \   # <-- This uses PORT env var or defaults to 5000
-    --workers 2 \
-    --threads 4 \
-    --timeout 300 \
-    --log-level info \
-    --access-logfile - \
-    --error-logfile - \
-    app:app
+# Run gunicorn with dynamic port\n\
+exec gunicorn \\\n\
+    --bind 0.0.0.0:${PORT:-5000} \\\n\
+    --workers 2 \\\n\
+    --threads 4 \\\n\
+    --timeout 300 \\\n\
+    --log-level info \\\n\
+    --access-logfile - \\\n\
+    --error-logfile - \\\n\
+    app:app\n\
 ' > /app/start.sh && chmod +x /app/start.sh
 
 # Set environment variables
@@ -138,7 +126,7 @@ ENV OLLAMA_HOST=0.0.0.0:11434 \
 RUN mkdir -p /root/.ollama/models
 
 # Expose ports
-EXPOSE ${PORT:-10000} 11434
+EXPOSE 11434
 
 # Set entrypoint
 ENTRYPOINT ["/app/start.sh"]
