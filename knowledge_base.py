@@ -198,7 +198,17 @@ class KnowledgeBase:
                 context += f"  • Moisture: Mulch {tables.get('moisture_analysis', {}).get('mulch', 'N/A')}% vs No Mulch {tables.get('moisture_analysis', {}).get('no_mulch', 'N/A')}% (77% higher with mulch)\n"
                 context += f"  • EC: Mulch {tables.get('parameter_wise_comparison', {}).get('EC', {}).get('mulch', 'N/A')} vs No Mulch {tables.get('parameter_wise_comparison', {}).get('EC', {}).get('no_mulch', 'N/A')} (9% lower salts)\n"
                 context += f"  • Soil Health Index: Mulch {tables.get('soil_health_index', {}).get('mulch', 'N/A')} vs No Mulch {tables.get('soil_health_index', {}).get('no_mulch', 'N/A')} (14.3% better)\n"
+                context += """
         
+                IMPORTANT FORMATTING INSTRUCTIONS:
+                - NEVER use ** or markdown formatting
+                - Use simple bullet points (•) for lists
+                - Use numbers (1., 2., etc.) for steps
+                - Keep paragraphs short and readable
+                - Present data clearly with numbers and percentages
+                - Use plain text headings followed by colons
+                - Separate sections with blank lines
+                """
         return context
 
 # Create singleton instance
