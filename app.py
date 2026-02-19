@@ -3,6 +3,7 @@ from flask_cors import CORS
 import uuid
 from datetime import datetime
 import os
+import re
 import logging
 import requests
 import json
@@ -76,7 +77,8 @@ Guidelines:
 6. Be encouraging and supportive of sustainable farming practices
 7. Never mention that you're using an AI API or that you have limitations
 8. Respond as if you're a knowledgeable agricultural consultant
-9. FORMATTING RULES - IMPORTANT:
+9. Always place bullet points on a new line. Never repeat bullet symbols.
+10. FORMATTING RULES - IMPORTANT:
    - NEVER use ** or any markdown formatting
    - Use simple bullet points with • or - for lists
    - For numbered steps, use 1., 2., etc.
@@ -133,50 +135,60 @@ Remember: You are completely free to use and always here to help with farming qu
         if hasattr(e, 'response') and e.response:
             logger.error(f"Response: {e.response.text}")
         return "I'm having trouble connecting right now. Please try again in a moment."
+
 def clean_response_format(text):
-    """Clean up formatting in AI responses while preserving new lines"""
+    """Clean AI response while preserving structure and readable bullets"""
     if not text:
         return text
 
-    # Remove markdown formatting
-    text = text.replace('**', '')
-    text = text.replace('__', '')
-    text = text.replace('*', '')
-    text = text.replace('```', '')
+    # Remove markdown artifacts
+    for m in ['**', '__', '```']:
+        text = text.replace(m, '')
 
     lines = text.split('\n')
-    cleaned_lines = []
-    previous_was_text = False
+    cleaned = []
+    last_line_was_text = False
 
     for line in lines:
-        stripped = line.strip()
+        line = line.strip()
 
-        # Bullet points
-        if stripped.startswith(('- ', '• ', '* ')):
-            # Ensure bullet starts on a new line
-            if previous_was_text:
-                cleaned_lines.append('')  # blank line before bullets
-            cleaned_lines.append('• ' + stripped[2:])
-            previous_was_text = False
+        # Remove duplicate bullets like "• •"
+        line = re.sub(r'^(•\s*)+', '• ', line)
+        line = re.sub(r'^-\s*', '• ', line)
+        line = re.sub(r'^\*\s*', '• ', line)
+
+        # Bullet point handling
+        if line.startswith('• '):
+            if last_line_was_text:
+                cleaned.append('')
+            cleaned.append(line)
+            last_line_was_text = False
 
         # Numbered steps
-        elif stripped and stripped[0].isdigit() and stripped[1:3] in ['. ', ') ']:
-            if previous_was_text:
-                cleaned_lines.append('')
-            cleaned_lines.append(stripped)
-            previous_was_text = False
+        elif re.match(r'^\d+[\.\)]\s+', line):
+            if last_line_was_text:
+                cleaned.append('')
+            cleaned.append(line)
+            last_line_was_text = False
 
+        # Normal text / headings
         else:
-            cleaned_lines.append(stripped)
-            previous_was_text = bool(stripped)
+            if line:
+                cleaned.append(line)
+                last_line_was_text = True
+            else:
+                cleaned.append('')
+                last_line_was_text = False
 
-    # Rebuild text while preserving line breaks
-    text = '\n'.join(cleaned_lines)
+    # Remove extra blank lines (max 1)
+    final = []
+    for l in cleaned:
+        if l == '' and (not final or final[-1] == ''):
+            continue
+        final.append(l)
 
-    # Clean extra spaces per line (not globally)
-    text = '\n'.join(' '.join(line.split()) for line in text.split('\n'))
+    return '\n'.join(final).strip()
 
-    return text.strip()
 
 def format_farming_response(text):
     """Additional formatting specifically for farming advice"""
