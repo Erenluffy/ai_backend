@@ -6,6 +6,7 @@ import os
 import logging
 import requests
 import json
+from knowledge_base import knowledge_base
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
