@@ -119,7 +119,7 @@ ENV OLLAMA_HOST=0.0.0.0:11434 \
     OLLAMA_MODELS=/root/.ollama/models \
     OLLAMA_KEEP_ALIVE=0 \
     API_PROVIDER=ollama \
-    OLLAMA_MODEL=phi \
+    OLLAMA_MODEL=tinyllama:1.1b \
     OLLAMA_URL=http://localhost:11434
 
 # Create Ollama models directory
