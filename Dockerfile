@@ -113,15 +113,17 @@ echo "Using Model: $OLLAMA_MODEL"\n\
 echo "Ollama URL: $OLLAMA_URL"\n\
 \n\
 # Run gunicorn\n\
-exec gunicorn \\\n\
-    --bind 0.0.0.0:5000 \\\n\
-    --workers 2 \\\n\
-    --threads 4 \\\n\
-    --timeout 300 \\\n\
-    --log-level info \\\n\
-    --access-logfile - \\\n\
-    --error-logfile - \\\n\
-    app:app\n\
+# Run gunicorn with dynamic port from Render
+echo "🌐 Starting Flask backend on port ${PORT:-5000}..."
+exec gunicorn \
+    --bind 0.0.0.0:${PORT:-5000} \   # <-- This uses PORT env var or defaults to 5000
+    --workers 2 \
+    --threads 4 \
+    --timeout 300 \
+    --log-level info \
+    --access-logfile - \
+    --error-logfile - \
+    app:app
 ' > /app/start.sh && chmod +x /app/start.sh
 
 # Set environment variables
@@ -136,7 +138,7 @@ ENV OLLAMA_HOST=0.0.0.0:11434 \
 RUN mkdir -p /root/.ollama/models
 
 # Expose ports
-EXPOSE 5000 11434
+EXPOSE ${PORT:-10000} 11434
 
 # Set entrypoint
 ENTRYPOINT ["/app/start.sh"]
