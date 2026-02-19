@@ -15,14 +15,21 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 
 # Configure CORS for production
-CORS(app, resources={
-    r"/*": {
-        "origins": ["http://localhost", "http://127.0.0.1", "http://your-domain.com", "*"],
-        "methods": ["GET", "POST", "OPTIONS", "DELETE"],
-        "allow_headers": ["Content-Type"]
-    }
-})
+# Comprehensive CORS configuration
+CORS(app, 
+     origins="*",  # Allow all origins for now
+     methods=["GET", "HEAD", "POST", "OPTIONS", "PUT", "PATCH", "DELETE"],
+     allow_headers=["Content-Type", "Authorization", "X-Requested-With", "Accept"],
+     supports_credentials=True,
+     max_age=3600)
 
+# Also add explicit OPTIONS handler for all routes
+@app.after_request
+def after_request(response):
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+    return response
 # Store conversations (use Redis in production)
 conversations = {}
 
@@ -352,7 +359,23 @@ def home():
         "api_provider": API_PROVIDER,
         "container": True
     })
-
+# Add this after all your route definitions (around line 350)
+@app.route('/debug/routes')
+def list_routes():
+    """List all registered routes (debug only)"""
+    routes = []
+    for rule in app.url_map.iter_rules():
+        routes.append({
+            'endpoint': rule.endpoint,
+            'methods': list(rule.methods),
+            'path': str(rule)
+        })
+    return jsonify({
+        'total_routes': len(routes),
+        'routes': routes,
+        'api_provider': API_PROVIDER,
+        'model': OLLAMA_MODEL
+    })
 @app.route('/health')
 def health():
     # Check Ollama health
