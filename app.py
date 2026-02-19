@@ -421,20 +421,35 @@ def get_config():
         "ollama_available_models": ollama_models
     })
 
-@app.route('/api/ollama/models', methods=['GET'])
+@app.route('/api/ollama/models', methods=['GET', 'OPTIONS'])
 def list_ollama_models():
+    # Handle CORS preflight
+    if request.method == 'OPTIONS':
+        response = jsonify({"success": True})
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'GET, OPTIONS')
+        return response, 200
+    
     """List available Ollama models"""
     try:
-        response = requests.get(f"{OLLAMA_URL}/api/tags", timeout=5)
+        logger.info(f"🔍 Fetching models from Ollama at {OLLAMA_URL}")
+        response = requests.get(f"{OLLAMA_URL}/api/tags", timeout=10)
+        
         if response.status_code == 200:
             data = response.json()
             models = [model['name'] for model in data.get('models', [])]
+            logger.info(f"✅ Found models: {models}")
             return jsonify({"success": True, "models": models})
         else:
-            return jsonify({"success": False, "error": "Could not fetch models"}), 500
+            logger.error(f"❌ Ollama returned {response.status_code}")
+            return jsonify({
+                "success": False, 
+                "error": f"Ollama returned {response.status_code}"
+            }), 500
     except Exception as e:
+        logger.error(f"❌ Error fetching models: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
-
 @app.route('/api/ollama/pull/<model_name>', methods=['POST'])
 def pull_ollama_model(model_name):
     """Pull a new Ollama model"""
