@@ -10,7 +10,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app \
     API_PROVIDER=ollama \
     OLLAMA_URL=http://host.docker.internal:11434 \
-    OLLAMA_MODEL=llama2
+    OLLAMA_MODEL=mistral
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
