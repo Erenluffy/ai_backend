@@ -67,7 +67,7 @@ You have access to the following information about SmartMulch and agriculture:
 
 {context}
 
-GUIDELINES:
+Guidelines:
 1. Always be helpful, friendly, and professional
 2. Focus on agriculture, farming, and SmartMulch products
 3. If asked about topics outside agriculture, politely redirect to farming topics
@@ -76,89 +76,15 @@ GUIDELINES:
 6. Be encouraging and supportive of sustainable farming practices
 7. Never mention that you're using an AI API or that you have limitations
 8. Respond as if you're a knowledgeable agricultural consultant
+9. FORMATTING RULES - IMPORTANT:
+   - NEVER use ** or any markdown formatting
+   - Use simple bullet points with • or - for lists
+   - For numbered steps, use 1., 2., etc.
+   - Keep paragraphs short and readable
+   - Use clear headings with plain text followed by a colon
+   - Separate sections with blank lines
 
-CRITICAL FORMATTING RULES - FOLLOW THESE EXACTLY:
-
-1. NO MARKDOWN: Never use **, *, __, or any markdown formatting
-
-2. BULLET POINTS - EACH ON A NEW LINE:
-   • Each bullet point MUST be on its own separate line
-   • Never put multiple bullet points on the same line
-   • Use a single bullet character (•) at the start of each bullet line
-   • Indent bullet points with 2 spaces after the section title
-
-   CORRECT EXAMPLE:
-   Soil Moisture Results:
-     • With mulch: 49.92% average moisture
-     • Without mulch: 28.15% average moisture
-     • Difference: 77% better water retention
-
-   INCORRECT EXAMPLE (DON'T DO THIS):
-   Soil Moisture Results: • With mulch: 49.92% • Without mulch: 28.15% • Difference: 77%
-
-3. SECTION HEADINGS:
-   • Put section headings on their own line, followed by a colon
-   • Add a blank line after each section heading
-   • Add a blank line between different sections
-
-   CORRECT EXAMPLE:
-   Temperature Analysis:
-     • Mulched soil: 22.04°C average
-     • Unmulched soil: 22.39°C average
-
-   Moisture Analysis:
-     • With mulch: 49.92%
-     • Without mulch: 28.15%
-
-4. NUMBERED LISTS:
-   • Each numbered item on its own line
-   • Use 1., 2., 3. format
-   • Add blank line before and after numbered lists
-
-   CORRECT EXAMPLE:
-   Follow these steps:
-     1. Prepare the soil by removing weeds
-     2. Apply mulch evenly across the surface
-     3. Water thoroughly after application
-
-5. DATA PRESENTATION:
-   • Put each data point on its own line
-   • Use clear labels followed by colons
-   • Highlight percentages and numbers clearly
-
-   CORRECT EXAMPLE:
-   Key Findings:
-     • Moisture increase: 77% improvement
-     • Temperature difference: 0.35°C cooler with mulch
-     • Nutrient stability: 57% better with mulch
-
-6. SPACING:
-   • Add ONE blank line between different sections
-   • Add ONE blank line before starting a new list
-   • Keep paragraphs to 2-3 sentences maximum
-   • No blank lines between bullet points in the same section
-
-COMPLETE FORMATTING EXAMPLE:
-
-Soil Moisture Analysis:
-  • Mulched soil maintains 49.92% moisture
-  • Unmulched soil only holds 28.15% moisture
-  • This represents a 77% improvement with mulch
-
-Temperature Effects:
-  • Mulched soil: 22.04°C with decreasing trend
-  • Unmulched soil: 22.39°C with increasing trend
-  • Benefit: Mulch provides cooling and stabilization
-
-Nutrient Management:
-  • Nitrogen: Slow release with mulch, rapid loss without
-  • Phosphorus: Controlled with mulch, erratic without
-  • Potassium: Stable with mulch, decreasing without
-  • Overall: 57% more stable nutrient release with mulch
-
-Remember: Each bullet point MUST start on a new line. Never combine multiple bullet points on the same line. This is the most important rule!
-
-You are completely free to use and always here to help with farming questions!"""
+Remember: You are completely free to use and always here to help with farming questions!"""
     
     headers = {
         "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
@@ -208,125 +134,76 @@ You are completely free to use and always here to help with farming questions!""
             logger.error(f"Response: {e.response.text}")
         return "I'm having trouble connecting right now. Please try again in a moment."
 def clean_response_format(text):
-    """Clean up formatting in AI responses with proper line breaks for bullet points"""
+    """Clean up formatting in AI responses while preserving new lines"""
     if not text:
         return text
-    
-    # Remove markdown bold/italic markers
+
+    # Remove markdown formatting
     text = text.replace('**', '')
-    text = text.replace('*', '')
     text = text.replace('__', '')
+    text = text.replace('*', '')
     text = text.replace('```', '')
-    
-    # First, fix double bullet points (● ●) by replacing with single bullet
-    text = text.replace('● ●', '●')
-    
-    # Split the text into lines
+
     lines = text.split('\n')
     cleaned_lines = []
-    
+    previous_was_text = False
+
     for line in lines:
-        line = line.rstrip()
-        
-        # Check if line has multiple bullet points stuck together
-        if '●' in line and line.count('●') > 1:
-            # Split by bullet and process each part
-            parts = line.split('●')
-            for i, part in enumerate(parts):
-                part = part.strip()
-                if part:  # If there's content
-                    cleaned_lines.append('  • ' + part)
-        # Handle lines with single bullet
-        elif '●' in line:
-            # Extract content after bullet
-            content = line.replace('●', '').strip()
-            cleaned_lines.append('  • ' + content)
-        # Handle dash bullets
-        elif line.strip().startswith('- '):
-            cleaned_lines.append('  • ' + line.strip()[2:])
-        # Handle asterisk bullets
-        elif line.strip().startswith('* '):
-            cleaned_lines.append('  • ' + line.strip()[2:])
-        # Handle numbered lists
-        elif line.strip() and line.strip()[0].isdigit() and line.strip()[1:3] in ['. ', ') ']:
-            cleaned_lines.append(line)
-        # Regular text (headings)
-        elif line.strip() and ':' in line and not line.strip().startswith('  • '):
-            cleaned_lines.append('')
-            cleaned_lines.append(line.strip())
-            cleaned_lines.append('')
-        # Regular text
-        elif line.strip():
-            cleaned_lines.append(line.strip())
-        # Empty line
+        stripped = line.strip()
+
+        # Bullet points
+        if stripped.startswith(('- ', '• ', '* ')):
+            # Ensure bullet starts on a new line
+            if previous_was_text:
+                cleaned_lines.append('')  # blank line before bullets
+            cleaned_lines.append('• ' + stripped[2:])
+            previous_was_text = False
+
+        # Numbered steps
+        elif stripped and stripped[0].isdigit() and stripped[1:3] in ['. ', ') ']:
+            if previous_was_text:
+                cleaned_lines.append('')
+            cleaned_lines.append(stripped)
+            previous_was_text = False
+
         else:
-            cleaned_lines.append('')
-    
-    # Remove consecutive empty lines
-    final_lines = []
-    prev_empty = False
-    
-    for line in cleaned_lines:
-        if line == '':
-            if not prev_empty:
-                final_lines.append(line)
-                prev_empty = True
-        else:
-            final_lines.append(line)
-            prev_empty = False
-    
-    return '\n'.join(final_lines)
+            cleaned_lines.append(stripped)
+            previous_was_text = bool(stripped)
+
+    # Rebuild text while preserving line breaks
+    text = '\n'.join(cleaned_lines)
+
+    # Clean extra spaces per line (not globally)
+    text = '\n'.join(' '.join(line.split()) for line in text.split('\n'))
+
+    return text.strip()
 
 def format_farming_response(text):
-    """Additional formatting specifically for farming advice with proper line breaks"""
+    """Additional formatting specifically for farming advice"""
     if not text:
         return text
     
+    # Ensure proper bullet point formatting for common farming tips
     lines = text.split('\n')
     formatted_lines = []
     
     for line in lines:
-        line = line.rstrip()
+        # Check if line contains key farming terms and should be formatted
         lower_line = line.lower()
         
-        # Format section headings
-        if any(term in lower_line for term in ['immediate actions:', 'steps:', 'recommendations:', 
-                                               'tips:', 'benefits:', 'features:', 'key findings:',
-                                               'summary:', 'conclusion:', 'results:', 'analysis:']):
-            formatted_lines.append('')
-            formatted_lines.append(line.strip())
-            formatted_lines.append('')
+        # Format sections with clear headings
+        if any(term in lower_line for term in ['immediate actions', 'steps:', 'recommendations:', 'tips:', 'benefits:', 'features:']):
+            formatted_lines.append('\n' + line.strip() + '\n')
         
-        # Format data points with percentages and comparisons
-        elif '%' in line or any(term in line for term in ['increase', 'decrease', 'improve', 'average']):
-            if line.strip() and not line.strip().startswith('  • '):
-                formatted_lines.append('  • ' + line.strip())
-            else:
-                formatted_lines.append(line)
+        # Format data points with percentages and numbers nicely
+        elif '%' in line or any(term in line for term in ['increase', 'decrease', 'improve']):
+            # Ensure numbers are clearly presented
+            formatted_lines.append('  • ' + line.strip())
         
-        # Regular text
-        elif line.strip():
+        else:
             formatted_lines.append(line)
-        else:
-            formatted_lines.append('')
     
-    # Ensure proper spacing around bullet points
-    final_lines = []
-    in_bullet_section = False
-    
-    for i, line in enumerate(formatted_lines):
-        if line.startswith('  • '):
-            if not in_bullet_section and i > 0 and formatted_lines[i-1] != '':
-                final_lines.append('')
-            final_lines.append(line)
-            in_bullet_section = True
-        else:
-            if in_bullet_section and line:
-                final_lines.append('')
-            final_lines.append(line)
-            in_bullet_section = False
-    
-    return '\n'.join(final_lines)
+    return '\n'.join(formatted_lines)
 
 def get_openai_response(message, conversation_history=[]):
     """Get response from OpenAI API"""
@@ -718,7 +595,6 @@ def get_config():
         "anthropic_configured": bool(ANTHROPIC_API_KEY),
         "gemini_configured": bool(GEMINI_API_KEY)
     })
-
 @app.route('/api/chat', methods=['POST', 'OPTIONS'])
 def chat():
     if request.method == 'OPTIONS':
@@ -744,8 +620,7 @@ def chat():
         # Get AI response with SmartMulch context
         ai_message = get_deepseek_response(message, history)
         
-        # Apply both cleaning functions for optimal formatting
-        ai_message = clean_response_format(ai_message)
+        # Additional formatting for farming-specific responses
         ai_message = format_farming_response(ai_message)
         
         # Store conversation with cleaned response
