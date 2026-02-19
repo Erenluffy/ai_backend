@@ -189,34 +189,6 @@ def clean_response_format(text):
 
     return '\n'.join(final).strip()
 
-
-def format_farming_response(text):
-    """Additional formatting specifically for farming advice"""
-    if not text:
-        return text
-    
-    # Ensure proper bullet point formatting for common farming tips
-    lines = text.split('\n')
-    formatted_lines = []
-    
-    for line in lines:
-        # Check if line contains key farming terms and should be formatted
-        lower_line = line.lower()
-        
-        # Format sections with clear headings
-        if any(term in lower_line for term in ['immediate actions', 'steps:', 'recommendations:', 'tips:', 'benefits:', 'features:']):
-            formatted_lines.append('\n' + line.strip() + '\n')
-        
-        # Format data points with percentages and numbers nicely
-        elif '%' in line or any(term in line for term in ['increase', 'decrease', 'improve']):
-            # Ensure numbers are clearly presented
-            formatted_lines.append('  • ' + line.strip())
-        
-        else:
-            formatted_lines.append(line)
-    
-    return '\n'.join(formatted_lines)
-
 def get_openai_response(message, conversation_history=[]):
     """Get response from OpenAI API"""
     if not OPENAI_API_KEY:
@@ -541,32 +513,6 @@ def home():
             "Sustainable farming tips"
         ]
     })
-def format_farming_response(text):
-    """Additional formatting specifically for farming advice"""
-    if not text:
-        return text
-    
-    # Ensure proper bullet point formatting for common farming tips
-    lines = text.split('\n')
-    formatted_lines = []
-    
-    for line in lines:
-        # Check if line contains key farming terms and should be formatted
-        lower_line = line.lower()
-        
-        # Format sections with clear headings
-        if any(term in lower_line for term in ['immediate actions', 'steps:', 'recommendations:', 'tips:', 'benefits:', 'features:']):
-            formatted_lines.append('\n' + line.strip() + '\n')
-        
-        # Format data points with percentages and numbers nicely
-        elif '%' in line or any(term in line for term in ['increase', 'decrease', 'improve']):
-            # Ensure numbers are clearly presented
-            formatted_lines.append('  • ' + line.strip())
-        
-        else:
-            formatted_lines.append(line)
-    
-    return '\n'.join(formatted_lines)
 @app.route('/health')
 def health():
     return jsonify({
@@ -633,8 +579,8 @@ def chat():
         ai_message = get_deepseek_response(message, history)
         
         # Additional formatting for farming-specific responses
-        ai_message = format_farming_response(ai_message)
-        
+        ai_message = clean_response_format(ai_message)
+
         # Store conversation with cleaned response
         conversations[conversation_id].append({
             "user": message,
