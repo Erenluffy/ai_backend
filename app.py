@@ -67,7 +67,7 @@ You have access to the following information about SmartMulch and agriculture:
 
 {context}
 
-Guidelines:
+GUIDELINES:
 1. Always be helpful, friendly, and professional
 2. Focus on agriculture, farming, and SmartMulch products
 3. If asked about topics outside agriculture, politely redirect to farming topics
@@ -76,47 +76,89 @@ Guidelines:
 6. Be encouraging and supportive of sustainable farming practices
 7. Never mention that you're using an AI API or that you have limitations
 8. Respond as if you're a knowledgeable agricultural consultant
-9. FORMATTING RULES - IMPORTANT:
-   - NEVER use ** or any markdown formatting
-   - Use simple bullet points with • or - for lists
-   - For numbered steps, use 1., 2., etc.
-   - Keep paragraphs short and readable
-   - Use clear headings with plain text followed by a colon
-   - Separate sections with blank lines
-   - Each bullet point MUST be on its own new line
-    - Use this exact format for lists:
-      
-      Main Point:
-        • First bullet point (on its own line)
-        • Second bullet point (on its own line)
-        • Third bullet point (on its own line)
-      
-    - For numbered steps, use:
-      
-      1. First step (on its own line)
-      2. Second step (on its own line)
-      3. Third step (on its own line)
-      
-    - Put a blank line before starting a new list or section
-    - Keep paragraphs short (2-3 sentences max)
-    - Separate different topics with blank lines
-    - Present data clearly with numbers and percentages on their own lines
-    
-    Example of CORRECT formatting:
-    
-    Soil Moisture Results:
-      • With mulch: 49.92% average moisture
-      • Without mulch: 28.15% average moisture
-      • Difference: 77% better water retention with mulch
-    
-    Temperature Analysis:
-      • Mulched soil: 22.04°C average, decreasing trend
-      • Unmulched soil: 22.39°C average, increasing trend
-      • Benefit: Mulch stabilizes soil temperature
-    
-    Remember: Each bullet point MUST start on a new line!
 
-Remember: You are completely free to use and always here to help with farming questions!"""
+CRITICAL FORMATTING RULES - FOLLOW THESE EXACTLY:
+
+1. NO MARKDOWN: Never use **, *, __, or any markdown formatting
+
+2. BULLET POINTS - EACH ON A NEW LINE:
+   • Each bullet point MUST be on its own separate line
+   • Never put multiple bullet points on the same line
+   • Use a single bullet character (•) at the start of each bullet line
+   • Indent bullet points with 2 spaces after the section title
+
+   CORRECT EXAMPLE:
+   Soil Moisture Results:
+     • With mulch: 49.92% average moisture
+     • Without mulch: 28.15% average moisture
+     • Difference: 77% better water retention
+
+   INCORRECT EXAMPLE (DON'T DO THIS):
+   Soil Moisture Results: • With mulch: 49.92% • Without mulch: 28.15% • Difference: 77%
+
+3. SECTION HEADINGS:
+   • Put section headings on their own line, followed by a colon
+   • Add a blank line after each section heading
+   • Add a blank line between different sections
+
+   CORRECT EXAMPLE:
+   Temperature Analysis:
+     • Mulched soil: 22.04°C average
+     • Unmulched soil: 22.39°C average
+
+   Moisture Analysis:
+     • With mulch: 49.92%
+     • Without mulch: 28.15%
+
+4. NUMBERED LISTS:
+   • Each numbered item on its own line
+   • Use 1., 2., 3. format
+   • Add blank line before and after numbered lists
+
+   CORRECT EXAMPLE:
+   Follow these steps:
+     1. Prepare the soil by removing weeds
+     2. Apply mulch evenly across the surface
+     3. Water thoroughly after application
+
+5. DATA PRESENTATION:
+   • Put each data point on its own line
+   • Use clear labels followed by colons
+   • Highlight percentages and numbers clearly
+
+   CORRECT EXAMPLE:
+   Key Findings:
+     • Moisture increase: 77% improvement
+     • Temperature difference: 0.35°C cooler with mulch
+     • Nutrient stability: 57% better with mulch
+
+6. SPACING:
+   • Add ONE blank line between different sections
+   • Add ONE blank line before starting a new list
+   • Keep paragraphs to 2-3 sentences maximum
+   • No blank lines between bullet points in the same section
+
+COMPLETE FORMATTING EXAMPLE:
+
+Soil Moisture Analysis:
+  • Mulched soil maintains 49.92% moisture
+  • Unmulched soil only holds 28.15% moisture
+  • This represents a 77% improvement with mulch
+
+Temperature Effects:
+  • Mulched soil: 22.04°C with decreasing trend
+  • Unmulched soil: 22.39°C with increasing trend
+  • Benefit: Mulch provides cooling and stabilization
+
+Nutrient Management:
+  • Nitrogen: Slow release with mulch, rapid loss without
+  • Phosphorus: Controlled with mulch, erratic without
+  • Potassium: Stable with mulch, decreasing without
+  • Overall: 57% more stable nutrient release with mulch
+
+Remember: Each bullet point MUST start on a new line. Never combine multiple bullet points on the same line. This is the most important rule!
+
+You are completely free to use and always here to help with farming questions!"""
     
     headers = {
         "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
@@ -176,22 +218,29 @@ def clean_response_format(text):
     text = text.replace('__', '')
     text = text.replace('```', '')
     
-    # Fix bullet points - ensure each bullet is on its own line
+    # First, fix double bullet points (● ●) by replacing with single bullet
+    text = text.replace('● ●', '●')
+    
+    # Split the text into lines
     lines = text.split('\n')
     cleaned_lines = []
     
     for line in lines:
-        line = line.rstrip()  # Remove trailing spaces
+        line = line.rstrip()
         
-        # Handle bullet points that might be stuck together
-        if '•' in line:
-            # Split line if it has multiple bullets without line breaks
-            parts = line.split('•')
+        # Check if line has multiple bullet points stuck together
+        if '●' in line and line.count('●') > 1:
+            # Split by bullet and process each part
+            parts = line.split('●')
             for i, part in enumerate(parts):
-                if i == 0 and part.strip():  # Text before first bullet
-                    cleaned_lines.append(part.strip())
-                elif part.strip():  # Bullet content
-                    cleaned_lines.append('  • ' + part.strip())
+                part = part.strip()
+                if part:  # If there's content
+                    cleaned_lines.append('  • ' + part)
+        # Handle lines with single bullet
+        elif '●' in line:
+            # Extract content after bullet
+            content = line.replace('●', '').strip()
+            cleaned_lines.append('  • ' + content)
         # Handle dash bullets
         elif line.strip().startswith('- '):
             cleaned_lines.append('  • ' + line.strip()[2:])
@@ -201,23 +250,30 @@ def clean_response_format(text):
         # Handle numbered lists
         elif line.strip() and line.strip()[0].isdigit() and line.strip()[1:3] in ['. ', ') ']:
             cleaned_lines.append(line)
+        # Regular text (headings)
+        elif line.strip() and ':' in line and not line.strip().startswith('  • '):
+            cleaned_lines.append('')
+            cleaned_lines.append(line.strip())
+            cleaned_lines.append('')
         # Regular text
         elif line.strip():
-            cleaned_lines.append(line)
+            cleaned_lines.append(line.strip())
         # Empty line
         else:
             cleaned_lines.append('')
     
-    # Additional pass to ensure bullet points are properly separated
+    # Remove consecutive empty lines
     final_lines = []
-    for i, line in enumerate(cleaned_lines):
-        if line.startswith('  • '):
-            # Ensure blank line before new section of bullets
-            if i > 0 and not cleaned_lines[i-1].startswith('  • ') and cleaned_lines[i-1] != '':
-                final_lines.append('')
-            final_lines.append(line)
+    prev_empty = False
+    
+    for line in cleaned_lines:
+        if line == '':
+            if not prev_empty:
+                final_lines.append(line)
+                prev_empty = True
         else:
             final_lines.append(line)
+            prev_empty = False
     
     return '\n'.join(final_lines)
 
